@@ -169,12 +169,14 @@ class Job(Base):
     
     id = Column(String, primary_key=True)
     user_id = Column(String, nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
     job_type = Column(String, nullable=False)
     status = Column(String, nullable=False, default="queued")
     parameters = Column(JSON, nullable=False)
     input_files = Column(JSON, nullable=True)
     output_files = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
+    progress = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
@@ -217,6 +219,59 @@ class Project(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-# Import required SQLAlchemy components
-from sqlalchemy import Column, String, Text, JSON, DateTime, ForeignKey
+class AnalysisResult(Base):
+    """Analysis results linked to a job."""
+    __tablename__ = "analysis_results"
+
+    id = Column(String, primary_key=True)
+    job_id = Column(String, ForeignKey("jobs.id"), nullable=False)
+    analysis_type = Column(String, nullable=False)
+    species = Column(String, nullable=False)
+    input_gene_count = Column(Integer, nullable=True)
+    total_pathways = Column(Integer, nullable=True)
+    significant_pathways = Column(Integer, nullable=True)
+    database_results = Column(JSON, nullable=True)
+    consensus_results = Column(JSON, nullable=True)
+    metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PathwayResult(Base):
+    """Per-pathway statistics associated with an analysis result."""
+    __tablename__ = "pathway_results"
+
+    id = Column(String, primary_key=True)
+    analysis_result_id = Column(String, ForeignKey("analysis_results.id"), nullable=False)
+    pathway_id = Column(String, nullable=False)
+    pathway_name = Column(Text, nullable=False)
+    database = Column(String, nullable=False)
+    p_value = Column(Float, nullable=True)
+    adjusted_p_value = Column(Float, nullable=True)
+    enrichment_score = Column(Float, nullable=True)
+    normalized_enrichment_score = Column(Float, nullable=True)
+    overlap_count = Column(Integer, nullable=True)
+    pathway_count = Column(Integer, nullable=True)
+    input_count = Column(Integer, nullable=True)
+    overlapping_genes = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ComparisonResult(Base):
+    """Results of comparing multiple analyses/datasets."""
+    __tablename__ = "comparison_results"
+
+    id = Column(String, primary_key=True)
+    job_id = Column(String, ForeignKey("jobs.id"), nullable=False)
+    comparison_type = Column(String, nullable=False)
+    input_analysis_ids = Column(JSON, nullable=False)
+    overlap_statistics = Column(JSON, nullable=True)
+    correlation_results = Column(JSON, nullable=True)
+    clustering_results = Column(JSON, nullable=True)
+    visualization_data = Column(JSON, nullable=True)
+    metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Import required SQLAlchemy components (kept at end to avoid circular imports above)
+from sqlalchemy import Column, String, Text, JSON, DateTime, ForeignKey, Integer, Float
 from datetime import datetime

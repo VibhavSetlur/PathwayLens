@@ -13,9 +13,11 @@ from ..schemas.normalize import (
     NormalizationRequest, NormalizationResponse, NormalizationStatus, NormalizationResult,
     NormalizationParameters, NormalizationType
 )
-from ..utils.dependencies import get_current_user, get_database
+from ..utils.dependencies import get_current_user, get_database_session
 from ..utils.exceptions import PathwayLensException
+from ..utils.database import Job, JobResult
 from ..tasks.normalize import normalize_gene_ids, normalize_pathway_ids, normalize_omics_data
+from sqlalchemy import select
 
 
 router = APIRouter(prefix="/normalize", tags=["normalization"])
@@ -26,7 +28,7 @@ async def normalize_gene_ids_endpoint(
     request: NormalizationRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db_session = Depends(get_database_session)
 ):
     """
     Normalize gene IDs.
@@ -35,7 +37,7 @@ async def normalize_gene_ids_endpoint(
         request: Normalization request parameters
         background_tasks: FastAPI background tasks
         current_user: Current authenticated user
-        db: Database connection
+        db_session: Database session
         
     Returns:
         NormalizationResponse: Normalization response with job ID and status
@@ -48,20 +50,21 @@ async def normalize_gene_ids_endpoint(
         if not request.parameters:
             raise HTTPException(status_code=400, detail="Normalization parameters are required")
         
-        # Create normalization job record
-        job_record = {
-            "job_id": job_id,
-            "user_id": current_user["id"],
-            "normalization_type": "gene_ids",
-            "status": "pending",
-            "parameters": request.parameters.model_dump(),
-            "input_data": request.input_data,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
+        # Create job record using ORM
+        job = Job(
+            id=job_id,
+            user_id=current_user["id"],
+            job_type="normalize_gene_ids",
+            status="queued",
+            parameters=request.parameters.model_dump(),
+            input_files={"input_data": request.input_data},
+            progress=0,
+            created_at=datetime.utcnow()
+        )
         
         # Store job record in database
-        await db.normalization_jobs.insert_one(job_record)
+        db_session.add(job)
+        await db_session.commit()
         
         # Start background normalization task
         background_tasks.add_task(
@@ -93,7 +96,7 @@ async def normalize_pathway_ids_endpoint(
     request: NormalizationRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db_session = Depends(get_database_session)
 ):
     """
     Normalize pathway IDs.
@@ -102,7 +105,7 @@ async def normalize_pathway_ids_endpoint(
         request: Normalization request parameters
         background_tasks: FastAPI background tasks
         current_user: Current authenticated user
-        db: Database connection
+        db_session: Database session
         
     Returns:
         NormalizationResponse: Normalization response with job ID and status
@@ -115,20 +118,21 @@ async def normalize_pathway_ids_endpoint(
         if not request.parameters:
             raise HTTPException(status_code=400, detail="Normalization parameters are required")
         
-        # Create normalization job record
-        job_record = {
-            "job_id": job_id,
-            "user_id": current_user["id"],
-            "normalization_type": "pathway_ids",
-            "status": "pending",
-            "parameters": request.parameters.model_dump(),
-            "input_data": request.input_data,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
+        # Create job record using ORM
+        job = Job(
+            id=job_id,
+            user_id=current_user["id"],
+            job_type="normalize_pathway_ids",
+            status="queued",
+            parameters=request.parameters.model_dump(),
+            input_files={"input_data": request.input_data},
+            progress=0,
+            created_at=datetime.utcnow()
+        )
         
         # Store job record in database
-        await db.normalization_jobs.insert_one(job_record)
+        db_session.add(job)
+        await db_session.commit()
         
         # Start background normalization task
         background_tasks.add_task(
@@ -160,7 +164,7 @@ async def normalize_omics_data_endpoint(
     request: NormalizationRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db_session = Depends(get_database_session)
 ):
     """
     Normalize omics data.
@@ -169,7 +173,7 @@ async def normalize_omics_data_endpoint(
         request: Normalization request parameters
         background_tasks: FastAPI background tasks
         current_user: Current authenticated user
-        db: Database connection
+        db_session: Database session
         
     Returns:
         NormalizationResponse: Normalization response with job ID and status
@@ -182,20 +186,21 @@ async def normalize_omics_data_endpoint(
         if not request.parameters:
             raise HTTPException(status_code=400, detail="Normalization parameters are required")
         
-        # Create normalization job record
-        job_record = {
-            "job_id": job_id,
-            "user_id": current_user["id"],
-            "normalization_type": "omics_data",
-            "status": "pending",
-            "parameters": request.parameters.model_dump(),
-            "input_data": request.input_data,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
+        # Create job record using ORM
+        job = Job(
+            id=job_id,
+            user_id=current_user["id"],
+            job_type="normalize_omics_data",
+            status="queued",
+            parameters=request.parameters.model_dump(),
+            input_files={"input_data": request.input_data},
+            progress=0,
+            created_at=datetime.utcnow()
+        )
         
         # Store job record in database
-        await db.normalization_jobs.insert_one(job_record)
+        db_session.add(job)
+        await db_session.commit()
         
         # Start background normalization task
         background_tasks.add_task(
@@ -226,7 +231,7 @@ async def normalize_omics_data_endpoint(
 async def get_normalization_status(
     job_id: str,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db_session = Depends(get_database_session)
 ):
     """
     Get normalization job status.
@@ -234,28 +239,28 @@ async def get_normalization_status(
     Args:
         job_id: Normalization job ID
         current_user: Current authenticated user
-        db: Database connection
+        db_session: Database session
         
     Returns:
         NormalizationStatus: Current normalization status
     """
     try:
-        # Find job record
-        job_record = await db.normalization_jobs.find_one({
-            "job_id": job_id,
-            "user_id": current_user["id"]
-        })
+        # Find job record using ORM
+        result = await db_session.execute(
+            select(Job).where(Job.id == job_id, Job.user_id == current_user["id"])
+        )
+        job = result.scalar_one_or_none()
         
-        if not job_record:
+        if not job:
             raise HTTPException(status_code=404, detail="Normalization job not found")
         
         return NormalizationStatus(
             job_id=job_id,
-            status=job_record["status"],
-            progress=job_record.get("progress", 0),
-            message=job_record.get("message", ""),
-            created_at=job_record["created_at"],
-            updated_at=job_record["updated_at"]
+            status=job.status,
+            progress=job.progress,
+            message=getattr(job, 'message', ''),
+            created_at=job.created_at,
+            updated_at=job.updated_at
         )
         
     except HTTPException:

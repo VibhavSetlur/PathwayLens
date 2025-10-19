@@ -13,9 +13,11 @@ from ..schemas.analyze import (
     AnalysisRequest, AnalysisResponse, AnalysisStatus, AnalysisResult,
     AnalysisParameters, AnalysisType, DatabaseType, CorrectionMethod
 )
-from ..utils.dependencies import get_current_user, get_database
+from ..utils.dependencies import get_current_user, get_database_session
 from ..utils.exceptions import PathwayLensException
+from ..utils.database import Job, JobResult, AnalysisResult
 from ..tasks.analyze import analyze_pathway_enrichment, analyze_multi_omics, analyze_statistical
+from sqlalchemy import select
 
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
@@ -26,7 +28,7 @@ async def analyze_pathway_enrichment_endpoint(
     request: AnalysisRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db_session = Depends(get_database_session)
 ):
     """
     Analyze pathway enrichment.
@@ -48,20 +50,21 @@ async def analyze_pathway_enrichment_endpoint(
         if not request.parameters:
             raise HTTPException(status_code=400, detail="Analysis parameters are required")
         
-        # Create analysis job record
-        job_record = {
-            "job_id": job_id,
-            "user_id": current_user["id"],
-            "analysis_type": "pathway_enrichment",
-            "status": "pending",
-            "parameters": request.parameters.model_dump(),
-            "input_data": request.input_data,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
+        # Create job record using ORM
+        job = Job(
+            id=job_id,
+            user_id=current_user["id"],
+            job_type="analyze_pathway_enrichment",
+            status="queued",
+            parameters=request.parameters.model_dump(),
+            input_files={"input_data": request.input_data},
+            progress=0,
+            created_at=datetime.utcnow()
+        )
         
         # Store job record in database
-        await db.analysis_jobs.insert_one(job_record)
+        db_session.add(job)
+        await db_session.commit()
         
         # Start background analysis task
         background_tasks.add_task(

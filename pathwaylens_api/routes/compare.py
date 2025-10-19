@@ -13,9 +13,11 @@ from ..schemas.compare import (
     ComparisonRequest, ComparisonResponse, ComparisonStatus, ComparisonResult,
     ComparisonParameters, ComparisonType
 )
-from ..utils.dependencies import get_current_user, get_database
+from ..utils.dependencies import get_current_user, get_database_session
 from ..utils.exceptions import PathwayLensException
+from ..utils.database import Job, JobResult, ComparisonResult as ComparisonResultORM
 from ..tasks.compare import compare_analysis_results, compare_multi_omics, compare_pathways
+from sqlalchemy import select
 
 
 router = APIRouter(prefix="/compare", tags=["comparison"])
@@ -26,7 +28,7 @@ async def compare_analysis_results_endpoint(
     request: ComparisonRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    db = Depends(get_database)
+    db_session = Depends(get_database_session)
 ):
     """
     Compare analysis results.
@@ -48,20 +50,21 @@ async def compare_analysis_results_endpoint(
         if not request.parameters:
             raise HTTPException(status_code=400, detail="Comparison parameters are required")
         
-        # Create comparison job record
-        job_record = {
-            "job_id": job_id,
-            "user_id": current_user["id"],
-            "comparison_type": "analysis_results",
-            "status": "pending",
-            "parameters": request.parameters.model_dump(),
-            "input_data": request.input_data,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
+        # Create job record using ORM
+        job = Job(
+            id=job_id,
+            user_id=current_user["id"],
+            job_type="compare_analysis_results",
+            status="queued",
+            parameters=request.parameters.model_dump(),
+            input_files={"input_data": request.input_data},
+            progress=0,
+            created_at=datetime.utcnow()
+        )
         
         # Store job record in database
-        await db.comparison_jobs.insert_one(job_record)
+        db_session.add(job)
+        await db_session.commit()
         
         # Start background comparison task
         background_tasks.add_task(
