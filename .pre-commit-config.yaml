@@ -1,0 +1,77 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-docstring-first
+
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+        language_version: python3
+        args: [--line-length=100]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: [--profile=black, --line-length=100]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.4.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-requests, types-PyYAML, types-redis]
+        args: [--ignore-missing-imports]
+
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: [-r, pathwaylens_core/, pathwaylens_api/, pathwaylens_cli/]
+        exclude: ^tests/
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.3.2
+    hooks:
+      - id: python-safety-dependencies-check
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.0
+    hooks:
+      - id: prettier
+        files: \.(js|jsx|ts|tsx|json|css|scss|md|yml|yaml)$
+        exclude: ^(frontend/|docs/)
+
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.45.0
+    hooks:
+      - id: eslint
+        files: \.(js|jsx|ts|tsx)$
+        exclude: ^(frontend/|docs/)
+        additional_dependencies:
+          - eslint@8.45.0
+          - "@typescript-eslint/eslint-plugin@6.0.0"
+          - "@typescript-eslint/parser@6.0.0"
+
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: pytest-check
+        entry: python -m pytest tests/unit/ --maxfail=1
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

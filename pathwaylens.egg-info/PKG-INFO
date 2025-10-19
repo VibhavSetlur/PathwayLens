@@ -1,0 +1,241 @@
+Metadata-Version: 2.4
+Name: pathwaylens
+Version: 2.0.0
+Summary: Next-generation computational biology platform for multi-omics pathway analysis
+Author: PathwayLens Team
+Author-email: PathwayLens Team <pathwaylens@example.com>
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.9.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: loguru>=0.7.0
+Provides-Extra: analysis
+Requires-Dist: scipy>=1.10.0; extra == "analysis"
+Requires-Dist: scikit-learn>=1.3.0; extra == "analysis"
+Requires-Dist: statsmodels>=0.14.0; extra == "analysis"
+Requires-Dist: networkx>=3.1.0; extra == "analysis"
+Requires-Dist: biopython>=1.79; extra == "analysis"
+Requires-Dist: mygene>=3.2.2; extra == "analysis"
+Provides-Extra: viz
+Requires-Dist: matplotlib>=3.7.0; extra == "viz"
+Requires-Dist: seaborn>=0.12.0; extra == "viz"
+Requires-Dist: plotly>=5.15.0; extra == "viz"
+Provides-Extra: pathways
+Requires-Dist: gseapy>=1.0.0; extra == "pathways"
+Requires-Dist: enrichr>=0.0.6; extra == "pathways"
+Requires-Dist: gprofiler-official>=1.0.0; extra == "pathways"
+Requires-Dist: pyensembl>=2.2.0; extra == "pathways"
+Requires-Dist: pybiomart>=0.2.0; extra == "pathways"
+Requires-Dist: bioservices>=1.11.0; extra == "pathways"
+Requires-Dist: goatools>=1.3.0; extra == "pathways"
+Provides-Extra: api
+Requires-Dist: fastapi>=0.100.0; extra == "api"
+Requires-Dist: uvicorn>=0.23.0; extra == "api"
+Requires-Dist: pydantic>=2.0.0; extra == "api"
+Requires-Dist: aiohttp>=3.8.0; extra == "api"
+Requires-Dist: httpx>=0.24.0; extra == "api"
+Requires-Dist: tenacity>=8.2.0; extra == "api"
+Provides-Extra: jobs
+Requires-Dist: celery>=5.3.0; extra == "jobs"
+Requires-Dist: redis>=4.6.0; extra == "jobs"
+Provides-Extra: database
+Requires-Dist: sqlalchemy>=2.0.0; extra == "database"
+Requires-Dist: alembic>=1.12.0; extra == "database"
+Requires-Dist: psycopg2-binary>=2.9.0; extra == "database"
+Provides-Extra: auth
+Requires-Dist: python-multipart>=0.0.6; extra == "auth"
+Requires-Dist: python-jose>=3.3.0; extra == "auth"
+Requires-Dist: passlib>=1.7.4; extra == "auth"
+Requires-Dist: bcrypt>=4.0.0; extra == "auth"
+Provides-Extra: storage
+Requires-Dist: h5py>=3.9.0; extra == "storage"
+Requires-Dist: zarr>=2.16.0; extra == "storage"
+Requires-Dist: cachetools>=5.3.0; extra == "storage"
+Requires-Dist: openpyxl>=3.1.0; extra == "storage"
+Requires-Dist: xlrd>=2.0.0; extra == "storage"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: flake8>=5.0.0; extra == "dev"
+Requires-Dist: mypy>=0.991; extra == "dev"
+Requires-Dist: pre-commit>=3.3.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: bandit>=1.7.0; extra == "dev"
+Requires-Dist: safety>=2.3.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: pathwaylens[analysis,api,auth,database,jobs,pathways,storage,viz]; extra == "all"
+Dynamic: author
+Dynamic: requires-python
+
+# 🧬 PathwayLens 2.0
+
+**Next-generation computational biology platform for multi-omics pathway analysis**
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/pathwaylens.svg)](https://badge.fury.io/py/pathwaylens)
+
+## 🚀 Quick Start
+
+### Easy Installation
+
+```bash
+# Install core features (lightweight, ~50MB)
+pip install pathwaylens
+
+# Install all features (full functionality, ~500MB)
+pip install pathwaylens[all]
+
+# Install specific features
+pip install pathwaylens[analysis]  # Core analysis tools
+pip install pathwaylens[viz]       # Visualization tools
+pip install pathwaylens[pathways]  # Pathway databases
+pip install pathwaylens[api]       # Web API
+```
+
+### Basic Usage
+
+```bash
+# Check installation
+pathwaylens --help
+
+# Normalize gene IDs
+pathwaylens normalize gene-ids --input genes.csv --species human
+
+# Perform pathway analysis
+pathwaylens analyze enrichment --input deseq2_results.csv --databases kegg,reactome
+
+# Compare datasets
+pathwaylens compare --input dataset1.csv dataset2.csv --species human
+```
+
+## 📦 Installation Options
+
+### Minimal Installation (Recommended for CLI users)
+```bash
+pip install pathwaylens
+```
+**Includes:** Basic CLI, gene ID normalization, simple analysis tools
+
+### Full Installation (Recommended for researchers)
+```bash
+pip install pathwaylens[all]
+```
+**Includes:** All analysis tools, visualization, pathway databases, web API
+
+### Feature-Specific Installation
+```bash
+pip install pathwaylens[analysis,viz,pathways]
+```
+**Includes:** Analysis tools, visualization, and pathway databases
+
+## 🧬 Features
+
+### Core Features (Always Included)
+- ✅ **Gene ID Normalization**: Convert between Entrez, Ensembl, Symbol, UniProt
+- ✅ **Basic Analysis**: Simple pathway enrichment and statistical tests
+- ✅ **Cross-Platform CLI**: Works on Windows, macOS, and Linux
+- ✅ **Rich Interface**: Beautiful command-line interface with progress bars
+
+### Extended Features (Optional)
+- 🔬 **Advanced Analysis**: Multi-omics integration, topology analysis, GSVA
+- 📊 **Visualization**: Interactive plots, network diagrams, dashboards
+- 🗄️ **Pathway Databases**: KEGG, Reactome, GO, WikiPathways
+- 🌐 **Web Interface**: Next.js frontend with modern UI
+- ⚡ **Background Jobs**: Celery-based job processing
+- 🗃️ **Database Support**: PostgreSQL with full schema
+
+## 🔧 Development Installation
+
+```bash
+# Clone repository
+git clone https://github.com/pathwaylens/pathwaylens.git
+cd pathwaylens
+
+# Install in development mode
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run system test
+python test_system.py
+```
+
+## 🐳 Docker Deployment
+
+```bash
+# Quick start with Docker Compose
+docker compose -f infra/docker/docker-compose.yml up -d
+
+# Access web interface
+open http://localhost:3000
+```
+
+## 📚 Documentation
+
+- **User Guide**: [docs/user-guide.md](docs/user-guide.md)
+- **API Documentation**: [docs/api.md](docs/api.md)
+- **Deployment Guide**: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+- **Blueprint**: [PATHWAYLENS_2.0_UPGRADE_BLUEPRINT.md](PATHWAYLENS_2.0_UPGRADE_BLUEPRINT.md)
+
+## 🎯 Use Cases
+
+### Bioinformatics Researchers
+```bash
+# Install full suite
+pip install pathwaylens[all]
+
+# Analyze RNA-seq data
+pathwaylens analyze enrichment --input deseq2_results.csv --databases kegg,reactome
+
+# Generate publication-ready plots
+pathwaylens visualize --input analysis_results.json --type enrichment_plot
+```
+
+### Data Scientists
+```bash
+# Install analysis tools
+pip install pathwaylens[analysis,viz]
+
+# Normalize gene identifiers
+pathwaylens normalize gene-ids --input genes.csv --species human
+
+# Perform multi-omics analysis
+pathwaylens analyze multi-omics --input rna.csv protein.csv --method integration
+```
+
+### Software Developers
+```bash
+# Install API components
+pip install pathwaylens[api,database,jobs]
+
+# Start web API
+pathwaylens api start --host 0.0.0.0 --port 8000
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+Built with ❤️ for the bioinformatics community using:
+- [Typer](https://typer.tiangolo.com/) for CLI
+- [FastAPI](https://fastapi.tiangolo.com/) for web API
+- [Next.js](https://nextjs.org/) for frontend
+- [Plotly](https://plotly.com/) for visualizations
+
+---
+
+**PathwayLens 2.0** - Making pathway analysis accessible to everyone! 🧬✨

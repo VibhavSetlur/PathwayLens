@@ -1,0 +1,36 @@
+[run]
+source = pathwaylens_core, pathwaylens_api, pathwaylens_cli
+omit = 
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */venv/*
+    */env/*
+    */migrations/*
+    */migrations/*
+    */settings/*
+    */config/*
+    */static/*
+    */templates/*
+    */node_modules/*
+    */build/*
+    */dist/*
+    */coverage/*
+    */htmlcov/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+
+[html]
+directory = htmlcov
+title = PathwayLens 2.0 Coverage Report

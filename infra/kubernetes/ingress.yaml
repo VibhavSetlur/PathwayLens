@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pathwaylens-ingress
+  namespace: pathwaylens
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - pathwaylens.example.com
+    secretName: pathwaylens-tls
+  rules:
+  - host: pathwaylens.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 3000
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api
+            port:
+              number: 8000
+      - path: /flower
+        pathType: Prefix
+        backend:
+          service:
+            name: flower
+            port:
+              number: 5555

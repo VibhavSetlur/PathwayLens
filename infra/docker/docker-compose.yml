@@ -1,0 +1,175 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: pathwaylens-postgres
+    environment:
+      POSTGRES_DB: pathwaylens
+      POSTGRES_USER: pathwaylens
+      POSTGRES_PASSWORD: pathwaylens_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pathwaylens -d pathwaylens"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pathwaylens-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: pathwaylens-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pathwaylens-network
+
+  # PathwayLens API
+  api:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: pathwaylens-api
+    environment:
+      - DATABASE_URL=postgresql://pathwaylens:pathwaylens_password@postgres:5432/pathwaylens
+      - REDIS_URL=redis://redis:6379
+      - PATHWAYLENS_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pathwaylens-network
+
+  # PathwayLens Frontend
+  frontend:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.frontend
+    container_name: pathwaylens-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=production
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pathwaylens-network
+
+  # Celery Worker
+  worker:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: pathwaylens-worker
+    command: celery -A pathwaylens_api.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://pathwaylens:pathwaylens_password@postgres:5432/pathwaylens
+      - REDIS_URL=redis://redis:6379
+      - PATHWAYLENS_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - pathwaylens-network
+
+  # Celery Beat (Scheduler)
+  beat:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: pathwaylens-beat
+    command: celery -A pathwaylens_api.celery_app beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://pathwaylens:pathwaylens_password@postgres:5432/pathwaylens
+      - REDIS_URL=redis://redis:6379
+      - PATHWAYLENS_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - pathwaylens-network
+
+  # Flower (Celery Monitoring)
+  flower:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: pathwaylens-flower
+    command: celery -A pathwaylens_api.celery_app flower --port=5555
+    environment:
+      - DATABASE_URL=postgresql://pathwaylens:pathwaylens_password@postgres:5432/pathwaylens
+      - REDIS_URL=redis://redis:6379
+      - PATHWAYLENS_ENV=production
+    depends_on:
+      - redis
+    ports:
+      - "5555:5555"
+    networks:
+      - pathwaylens-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: pathwaylens-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - pathwaylens-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  pathwaylens-network:
+    driver: bridge
