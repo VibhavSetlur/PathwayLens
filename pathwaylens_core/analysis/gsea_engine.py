@@ -60,24 +60,31 @@ class GSEAEngine:
         self.logger.info(f"Starting GSEA analysis with {database.value} for {species}")
         
         try:
+            # Validate input parameters
+            if not self._validate_input_parameters(gene_list, database, species):
+                raise ValueError("Invalid input parameters")
+            
+            if not self._validate_threshold_parameters(significance_threshold, min_size, max_size):
+                raise ValueError("Invalid threshold parameters")
+                
+            if not self._validate_permutation_parameters(permutations):
+                raise ValueError("Invalid permutation parameters")
+
             # Get pathway data from database
-            pathway_data = await self.database_manager.get_pathways(
-                database=database,
-                species=species,
-                min_size=min_size,
-                max_size=max_size
+            pathway_data_dict = await self.database_manager.get_pathways(
+                databases=[database.value],
+                species=species
             )
             
-            if not pathway_data:
+            # Extract pathways for the specific database
+            pathways = pathway_data_dict.get(database.value, [])
+            
+            # Filter pathways by size
+            pathways = self._filter_pathways_by_size(pathways, min_size, max_size)
+            
+            if not pathways:
                 self.logger.warning(f"No pathways found for {database.value} in {species}")
-                return DatabaseResult(
-                    database=database,
-                    total_pathways=0,
-                    significant_pathways=0,
-                    pathways=[],
-                    species=species,
-                    coverage=0.0
-                )
+                return self._create_empty_result(database, species)
             
             # Prepare gene ranking (if not already ranked)
             gene_ranking = self._prepare_gene_ranking(gene_list)
@@ -170,6 +177,21 @@ class GSEAEngine:
             self.logger.error(f"GSEA analysis failed: {e}")
             raise
     
+    def _create_empty_result(
+        self,
+        database: DatabaseType,
+        species: str
+    ) -> DatabaseResult:
+        """Create an empty database result for when no pathways are found."""
+        return DatabaseResult(
+            database=database,
+            total_pathways=0,
+            significant_pathways=0,
+            pathways=[],
+            species=species,
+            coverage=0.0
+        )
+    
     def _prepare_gene_ranking(self, gene_list: List[str]) -> Dict[str, float]:
         """
         Prepare gene ranking from input gene list.
@@ -193,17 +215,12 @@ class GSEAEngine:
         
         return gene_ranking
     
-    def _calculate_enrichment_score(
-        self, 
-        gene_ranking: Dict[str, float], 
+    def _calculate_es_only(
+        self,
+        gene_ranking: Dict[str, float],
         pathway_genes: List[str]
-    ) -> Optional[Tuple[float, float, float]]:
-        """
-        Calculate GSEA enrichment score.
-        
-        Returns:
-            Tuple of (enrichment_score, normalized_es, p_value)
-        """
+    ) -> Optional[float]:
+        """Calculate only the enrichment score without p-value."""
         # Get all genes and their scores
         all_genes = list(gene_ranking.keys())
         all_scores = list(gene_ranking.values())
@@ -226,18 +243,39 @@ class GSEAEngine:
         # Calculate running sum
         running_sum = np.zeros(n_genes + 1)
         
+        # Calculate negative step size
+        # If all genes are in pathway, step size is 0 (avoid division by zero)
+        neg_step = 1.0 / (n_genes - n_pathway) if n_genes > n_pathway else 0.0
+        
         for i in range(n_genes):
             if pathway_mask[i]:
                 # Add positive contribution
                 running_sum[i + 1] = running_sum[i] + abs(sorted_scores[i]) / n_pathway
             else:
                 # Add negative contribution
-                running_sum[i + 1] = running_sum[i] - 1.0 / (n_genes - n_pathway)
+                running_sum[i + 1] = running_sum[i] - neg_step
         
         # Find maximum deviation from zero
-        enrichment_score = np.max(running_sum)
+        return np.max(running_sum)
+
+    def _calculate_enrichment_score(
+        self, 
+        gene_ranking: Dict[str, float], 
+        pathway_genes: List[str]
+    ) -> Optional[Tuple[float, float, float]]:
+        """
+        Calculate GSEA enrichment score.
+        
+        Returns:
+            Tuple of (enrichment_score, normalized_es, p_value)
+        """
+        enrichment_score = self._calculate_es_only(gene_ranking, pathway_genes)
+        
+        if enrichment_score is None:
+            return None
         
         # Normalize by the sum of absolute scores of pathway genes
+        n_pathway = len(pathway_genes)
         pathway_scores = [gene_ranking[gene] for gene in pathway_genes if gene in gene_ranking]
         if pathway_scores:
             max_possible_es = sum(abs(score) for score in pathway_scores) / n_pathway
@@ -271,9 +309,9 @@ class GSEAEngine:
             random_genes = np.random.choice(all_genes, size=n_pathway, replace=False)
             
             # Calculate ES for random set
-            es_result = self._calculate_enrichment_score(gene_ranking, random_genes.tolist())
+            es_result = self._calculate_es_only(gene_ranking, random_genes.tolist())
             if es_result is not None:
-                null_es_scores.append(es_result[0])
+                null_es_scores.append(es_result)
         
         if not null_es_scores:
             return 1.0
@@ -367,3 +405,154 @@ class GSEAEngine:
             })
         
         return stats_dict
+    
+    def calculate_cerno(
+        self,
+        gene_ranking: Dict[str, float],
+        pathway_genes: List[str]
+    ) -> Optional[Tuple[float, float]]:
+        """
+        Calculate CERNO (Cumulative Enrichment Ranked by Normalized Order) test.
+        
+        CERNO is a modified version of GSEA that uses rank-based statistics
+        instead of score-based statistics.
+        
+        Args:
+            gene_ranking: Dictionary mapping genes to their scores
+            pathway_genes: List of genes in the pathway
+            
+        Returns:
+            Tuple of (cerno_score, p_value) or None if no overlap
+        """
+        # Get all genes and sort by score (descending)
+        all_genes = sorted(gene_ranking.keys(), key=lambda x: gene_ranking[x], reverse=True)
+        total_genes = len(all_genes)
+        pathway_size = len(pathway_genes)
+        
+        if pathway_size == 0 or total_genes == 0:
+            return None
+        
+        # Find positions of pathway genes in ranked list
+        pathway_positions = []
+        for i, gene in enumerate(all_genes):
+            if gene in pathway_genes:
+                pathway_positions.append(i + 1)  # 1-indexed ranks
+        
+        if not pathway_positions:
+            return None
+        
+        # Calculate CERNO statistic
+        # CERNO = sum((total_genes - rank + 1) for pathway genes)
+        cerno_score = sum(total_genes - rank + 1 for rank in pathway_positions)
+        
+        # Normalize by expected value
+        expected_cerno = pathway_size * (total_genes + 1) / 2
+        normalized_cerno = cerno_score / expected_cerno if expected_cerno > 0 else 0
+        
+        # Calculate p-value using permutation test
+        p_value = self._calculate_cerno_pvalue(
+            gene_ranking, pathway_genes, cerno_score, n_permutations=1000
+        )
+        
+        return normalized_cerno, p_value
+    
+    def _calculate_cerno_pvalue(
+        self,
+        gene_ranking: Dict[str, float],
+        pathway_genes: List[str],
+        observed_cerno: float,
+        n_permutations: int = 1000
+    ) -> float:
+        """Calculate p-value for CERNO test using permutation."""
+        all_genes = list(gene_ranking.keys())
+        pathway_size = len(pathway_genes)
+        total_genes = len(all_genes)
+        
+        null_cerno_scores = []
+        
+        for _ in range(n_permutations):
+            # Randomly sample genes
+            random_genes = np.random.choice(all_genes, size=pathway_size, replace=False)
+            
+            # Calculate CERNO for random set
+            random_positions = []
+            sorted_genes = sorted(all_genes, key=lambda x: gene_ranking[x], reverse=True)
+            for i, gene in enumerate(sorted_genes):
+                if gene in random_genes:
+                    random_positions.append(i + 1)
+            
+            if random_positions:
+                random_cerno = sum(total_genes - rank + 1 for rank in random_positions)
+                null_cerno_scores.append(random_cerno)
+        
+        if not null_cerno_scores:
+            return 1.0
+        
+        # Calculate p-value (two-tailed)
+        null_cerno_scores = np.array(null_cerno_scores)
+        p_value = np.mean(null_cerno_scores >= observed_cerno)
+        
+        return min(max(p_value, 1e-300), 1.0)
+
+    def _validate_input_parameters(
+        self,
+        gene_list: List[str],
+        database: DatabaseType,
+        species: str
+    ) -> bool:
+        """Validate input parameters."""
+        if not gene_list:
+            return False
+        if not database:
+            return False
+        if not species:
+            return False
+        return True
+
+    def _validate_threshold_parameters(
+        self,
+        significance_threshold: float,
+        min_size: int,
+        max_size: int
+    ) -> bool:
+        """Validate threshold parameters."""
+        if not (0 <= significance_threshold <= 1):
+            return False
+        if min_size > max_size:
+            return False
+        if min_size < 0 or max_size < 0:
+            return False
+        return True
+
+    def _validate_permutation_parameters(
+        self,
+        permutations: int
+    ) -> bool:
+        """Validate permutation parameters."""
+        if permutations <= 0:
+            return False
+        return True
+
+    def _filter_pathways_by_size(
+        self,
+        pathways: List[Any],
+        min_size: int,
+        max_size: int
+    ) -> List[Any]:
+        """Filter pathways by size."""
+        filtered_pathways = []
+        for pathway in pathways:
+            # Handle PathwayInfo objects
+            if hasattr(pathway, 'genes'):
+                size = len(pathway.genes)
+            # Handle dicts (legacy)
+            elif isinstance(pathway, dict):
+                size = len(pathway.get('genes', []))
+                if 'size' in pathway:
+                    size = pathway['size']
+            else:
+                continue
+            
+            if min_size <= size <= max_size:
+                filtered_pathways.append(pathway)
+        return filtered_pathways

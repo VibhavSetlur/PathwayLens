@@ -82,8 +82,9 @@ class TestORAEngine:
     async def test_analyze_basic(self, ora_engine, sample_gene_list, sample_pathway_data):
         """Test basic ORA analysis."""
         # Mock database manager
-        ora_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
+        ora_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
         ora_engine.database_manager.get_background_genes = AsyncMock(return_value=set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"]))
+        ora_engine.database_manager.get_background_size = AsyncMock(return_value=20000)
         
         # Run analysis
         result = await ora_engine.analyze(
@@ -94,25 +95,25 @@ class TestORAEngine:
         
         # Verify result structure
         assert isinstance(result, DatabaseResult)
-        assert result.database_name == "KEGG"
-        assert result.database_type == DatabaseType.KEGG
+        assert result.database == DatabaseType.KEGG
         assert result.species == "human"
-        assert len(result.pathway_results) > 0
+        assert len(result.pathways) > 0
         
         # Verify pathway results
-        for pathway_result in result.pathway_results:
+        for pathway_result in result.pathways:
             assert isinstance(pathway_result, PathwayResult)
             assert pathway_result.pathway_id is not None
             assert pathway_result.pathway_name is not None
             assert 0 <= pathway_result.p_value <= 1
-            assert pathway_result.gene_overlap_count > 0
+            assert pathway_result.overlap_count > 0
 
     @pytest.mark.asyncio
     async def test_analyze_with_parameters(self, ora_engine, sample_gene_list, sample_pathway_data):
         """Test ORA analysis with custom parameters."""
         # Mock database manager
-        ora_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
+        ora_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
         ora_engine.database_manager.get_background_genes = AsyncMock(return_value=set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"]))
+        ora_engine.database_manager.get_background_size = AsyncMock(return_value=20000)
         
         # Run analysis with custom parameters
         result = await ora_engine.analyze(
@@ -127,32 +128,32 @@ class TestORAEngine:
         
         # Verify result structure
         assert isinstance(result, DatabaseResult)
-        assert len(result.pathway_results) > 0
+        assert len(result.pathways) > 0
 
     @pytest.mark.asyncio
     async def test_analyze_empty_gene_list(self, ora_engine, sample_pathway_data):
         """Test ORA analysis with empty gene list."""
         # Mock database manager
-        ora_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
+        ora_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
         ora_engine.database_manager.get_background_genes = AsyncMock(return_value=set())
+        ora_engine.database_manager.get_background_size = AsyncMock(return_value=20000)
         
         # Run analysis with empty gene list
-        result = await ora_engine.analyze(
-            gene_list=[],
-            database=DatabaseType.KEGG,
-            species="human"
-        )
-        
-        # Verify result structure
-        assert isinstance(result, DatabaseResult)
-        assert len(result.pathway_results) == 0
+        # Should raise ValueError because of input validation
+        with pytest.raises(ValueError, match="Invalid input parameters"):
+            await ora_engine.analyze(
+                gene_list=[],
+                database=DatabaseType.KEGG,
+                species="human"
+            )
 
     @pytest.mark.asyncio
     async def test_analyze_no_pathways(self, ora_engine, sample_gene_list):
         """Test ORA analysis with no pathways."""
         # Mock database manager to return empty pathway data
-        ora_engine.database_manager.get_pathway_data = AsyncMock(return_value={})
+        ora_engine.database_manager.get_pathways = AsyncMock(return_value={})
         ora_engine.database_manager.get_background_genes = AsyncMock(return_value=set(sample_gene_list))
+        ora_engine.database_manager.get_background_size = AsyncMock(return_value=20000)
         
         # Run analysis
         result = await ora_engine.analyze(
@@ -163,13 +164,13 @@ class TestORAEngine:
         
         # Verify result structure
         assert isinstance(result, DatabaseResult)
-        assert len(result.pathway_results) == 0
+        assert len(result.pathways) == 0
 
     @pytest.mark.asyncio
     async def test_analyze_database_error(self, ora_engine, sample_gene_list):
         """Test ORA analysis when database raises an error."""
         # Mock database manager to raise an error
-        ora_engine.database_manager.get_pathway_data = AsyncMock(side_effect=Exception("Database error"))
+        ora_engine.database_manager.get_pathways = AsyncMock(side_effect=Exception("Database error"))
         
         with pytest.raises(Exception, match="Database error"):
             await ora_engine.analyze(
@@ -178,36 +179,36 @@ class TestORAEngine:
                 species="human"
             )
 
-    def test_calculate_hypergeometric_p_value(self, ora_engine):
+    def test_calculate_hypergeometric_pvalue(self, ora_engine):
         """Test hypergeometric p-value calculation."""
         # Test case: 2 successes in 5 draws from 10 total with 3 successes
-        p_value = ora_engine._calculate_hypergeometric_p_value(
-            n_successes=2,
-            n_draws=5,
-            n_total=10,
-            n_successes_total=3
+        p_value = ora_engine._calculate_hypergeometric_pvalue(
+            overlap_count=2,
+            total_genes=5,
+            pathway_count=3,
+            background_size=10
         )
         
         assert 0 <= p_value <= 1
         assert isinstance(p_value, float)
 
-    def test_calculate_hypergeometric_p_value_edge_cases(self, ora_engine):
+    def test_calculate_hypergeometric_pvalue_edge_cases(self, ora_engine):
         """Test hypergeometric p-value calculation edge cases."""
         # Test case: no successes
-        p_value = ora_engine._calculate_hypergeometric_p_value(
-            n_successes=0,
-            n_draws=5,
-            n_total=10,
-            n_successes_total=3
+        p_value = ora_engine._calculate_hypergeometric_pvalue(
+            overlap_count=0,
+            total_genes=5,
+            pathway_count=3,
+            background_size=10
         )
         assert 0 <= p_value <= 1
         
         # Test case: all successes
-        p_value = ora_engine._calculate_hypergeometric_p_value(
-            n_successes=3,
-            n_draws=3,
-            n_total=10,
-            n_successes_total=3
+        p_value = ora_engine._calculate_hypergeometric_pvalue(
+            overlap_count=3,
+            total_genes=3,
+            pathway_count=3,
+            background_size=10
         )
         assert 0 <= p_value <= 1
 
@@ -239,23 +240,23 @@ class TestORAEngine:
         assert ci[0] < ci[1]
         assert all(isinstance(x, float) for x in ci)
 
-    def test_apply_multiple_testing_correction(self, ora_engine):
+    def test_apply_correction(self, ora_engine):
         """Test multiple testing correction."""
         p_values = [0.001, 0.005, 0.01, 0.05, 0.1]
         
         # Test FDR correction
-        corrected_p_values = ora_engine._apply_multiple_testing_correction(
+        corrected_p_values = ora_engine._apply_correction(
             p_values=p_values,
-            method=CorrectionMethod.FDR_BH
+            correction_method=CorrectionMethod.FDR_BH
         )
         
         assert len(corrected_p_values) == len(p_values)
         assert all(0 <= p <= 1 for p in corrected_p_values)
         
         # Test Bonferroni correction
-        corrected_p_values = ora_engine._apply_multiple_testing_correction(
+        corrected_p_values = ora_engine._apply_correction(
             p_values=p_values,
-            method=CorrectionMethod.BONFERRONI
+            correction_method=CorrectionMethod.BONFERRONI
         )
         
         assert len(corrected_p_values) == len(p_values)
@@ -331,8 +332,9 @@ class TestORAEngine:
         
         for database in databases:
             # Mock database manager
-            ora_engine.database_manager.get_pathway_data = AsyncMock(return_value={})
+            ora_engine.database_manager.get_pathways = AsyncMock(return_value={})
             ora_engine.database_manager.get_background_genes = AsyncMock(return_value=set(sample_gene_list))
+            ora_engine.database_manager.get_background_size = AsyncMock(return_value=20000)
             
             # Run analysis
             result = await ora_engine.analyze(
@@ -343,7 +345,7 @@ class TestORAEngine:
             
             # Verify result structure
             assert isinstance(result, DatabaseResult)
-            assert result.database_type == database
+            assert result.database == database
 
     @pytest.mark.asyncio
     async def test_analyze_different_species(self, ora_engine, sample_gene_list, sample_pathway_data):
@@ -352,8 +354,9 @@ class TestORAEngine:
         
         for species in species_list:
             # Mock database manager
-            ora_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
+            ora_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
             ora_engine.database_manager.get_background_genes = AsyncMock(return_value=set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"]))
+            ora_engine.database_manager.get_background_size = AsyncMock(return_value=20000)
             
             # Run analysis
             result = await ora_engine.analyze(

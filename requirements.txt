@@ -1,38 +1,109 @@
-# Core dependencies
+# PathwayLens 2.0 - Comprehensive Requirements
+# =============================================
+# This file contains all dependencies needed for PathwayLens
+# For development, install with: pip install -r requirements.txt
+# For production, use: pip install -e ".[all]"
+
+# ============================================
+# Core CLI Dependencies
+# ============================================
 typer>=0.9.0
 rich>=13.0.0
-click>=8.0.0
+requests>=2.31.0
 pandas>=2.0.0
-numpy>=1.24.0
+numpy>=1.24.0,<2.0.0
+pyyaml>=6.0
+loguru>=0.7.0
+
+# ============================================
+# Core Analysis Dependencies
+# ============================================
 scipy>=1.10.0
+scikit-learn>=1.3.0
+statsmodels>=0.14.0
+networkx>=3.1.0
+biopython>=1.79
+mygene>=3.2.2
+
+# ============================================
+# Pathway Analysis Dependencies
+# ============================================
+gseapy>=1.0.0
+enrichr>=0.0.6
+gprofiler-official>=1.0.0
+pyensembl>=2.2.0
+pybiomart>=0.2.0
+bioservices>=1.11.0
+goatools>=1.3.0
+
+# ============================================
+# Data Storage and Processing
+# ============================================
+h5py>=3.9.0
+zarr>=2.16.0
+cachetools>=5.3.0
+openpyxl>=3.1.0
+xlrd>=2.0.0
+psutil>=5.9.0  # System and process utilities
+
+# ============================================
+# Async Support
+# ============================================
+aiohttp>=3.8.0
+aiofiles>=23.0.0
+tenacity>=8.2.0
+
+# ============================================
+# Data Validation and Schemas
+# ============================================
+pydantic>=2.0.0
+chardet>=5.0.0  # Character encoding detection
+
+# ============================================
+# Pre-trained Models (Phase 1.1)
+# ============================================
+transformers>=4.30.0
+huggingface-hub>=0.16.0
+
+# ============================================
+# Single-Cell Data Support (Phase 4.1)
+# ============================================
+anndata>=0.9.0
+
+# ============================================
+# Visualization Dependencies
+# ============================================
 matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.15.0
-requests>=2.31.0
-aiohttp>=3.8.0
-fastapi>=0.100.0
-uvicorn>=0.23.0
-pydantic>=2.0.0
-pyyaml>=6.0
-loguru>=0.7.0
-biopython>=1.79
-mygene>=3.2.2
-openpyxl>=3.1.0
-xlrd>=2.0.0
 
-# API dependencies
-asyncpg>=0.28.0
-sqlalchemy>=2.0.0
-alembic>=1.11.0
-aiofiles>=23.0.0
-python-jose>=3.3.0
-passlib>=1.7.4
-python-multipart>=0.0.6
-email-validator>=2.0.0
+# ============================================
+# Development Dependencies
+# ============================================
+# Testing Framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+pytest-benchmark>=4.0.0
+pytest-xdist>=3.0.0
+pytest-html>=3.2.0
+pytest-timeout>=2.1.0
+coverage>=7.3.0
 
-# Job queue dependencies
-celery>=5.3.0
-redis>=4.6.0
+# Property-Based Testing
+hypothesis>=6.82.0
 
-# Database dependencies
-psycopg2-binary>=2.9.0
+# Code Quality Tools
+black>=22.0.0
+flake8>=5.0.0
+isort>=5.12.0
+mypy>=0.991
+pre-commit>=3.3.0
+bandit>=1.7.0
+safety>=2.3.0
+
+# Documentation
+sphinx>=7.0.0
+sphinx-rtd-theme>=1.3.0
+nbformat>=5.0.0  # Jupyter notebook format support

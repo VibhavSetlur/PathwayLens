@@ -1,15 +1,20 @@
 """
 Topology analysis engine for PathwayLens.
+
+Implements SPIA (Signaling Pathway Impact Analysis) and topology-aware
+pathway analysis methods.
 """
 
 import asyncio
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
 from loguru import logger
 import networkx as nx
 
-from .schemas import DatabaseResult, PathwayResult, DatabaseType
+from .schemas import DatabaseResult, PathwayResult, DatabaseType, CorrectionMethod
 from ..data import DatabaseManager
 
 
@@ -32,10 +37,10 @@ class TopologyEngine:
         database: DatabaseType,
         species: str,
         significance_threshold: float = 0.05,
-        correction_method: str = "fdr_bh",
+        correction_method: CorrectionMethod = CorrectionMethod.FDR_BH,
         min_size: int = 5,
         max_size: int = 500,
-        topology_method: str = "betweenness",
+        topology_method: str = "spia",
         network_type: str = "ppi"
     ) -> DatabaseResult:
         """
@@ -80,15 +85,21 @@ class TopologyEngine:
             # Build pathway network
             pathway_network = await self._build_pathway_network(filtered_pathways, network_type)
             
-            # Calculate topology scores
-            topology_scores = await self._calculate_topology_scores(
-                gene_list, pathway_network, topology_method
-            )
-            
-            # Perform statistical testing
-            pathway_results = await self._perform_statistical_testing(
-                topology_scores, significance_threshold, correction_method
-            )
+            # Calculate topology scores based on method
+            if topology_method == "spia":
+                pathway_results = await self._perform_spia_analysis(
+                    gene_list, filtered_pathways, pathway_network, 
+                    significance_threshold, correction_method
+                )
+            else:
+                topology_scores = await self._calculate_topology_scores(
+                    gene_list, pathway_network, topology_method
+                )
+                
+                # Perform statistical testing
+                pathway_results = await self._perform_statistical_testing(
+                    topology_scores, significance_threshold, correction_method
+                )
             
             # Calculate coverage
             coverage = self._calculate_coverage(gene_list, filtered_pathways)
@@ -330,6 +341,131 @@ class TopologyEngine:
         pathway_results.sort(key=lambda x: x.adjusted_p_value)
         
         return pathway_results
+    
+    async def _perform_spia_analysis(
+        self,
+        gene_list: List[str],
+        pathway_definitions: Dict[str, List[str]],
+        pathway_network: nx.Graph,
+        significance_threshold: float,
+        correction_method: CorrectionMethod
+    ) -> List[PathwayResult]:
+        """
+        Perform SPIA (Signaling Pathway Impact Analysis).
+        
+        SPIA combines ORA p-values with pathway topology to calculate
+        pathway impact scores.
+        """
+        pathway_results = []
+        total_genes = len(gene_list)
+        
+        # Get background size (simplified)
+        background_size = 20000  # Would get from database
+        
+        for pathway_id, pathway_genes in pathway_definitions.items():
+            # Calculate ORA p-value
+            overlapping_genes = list(set(gene_list) & set(pathway_genes))
+            overlap_count = len(overlapping_genes)
+            pathway_count = len(pathway_genes)
+            
+            if overlap_count == 0:
+                continue
+            
+            # Hypergeometric test for ORA
+            p_ora = stats.hypergeom.sf(
+                overlap_count - 1,
+                background_size,
+                pathway_count,
+                total_genes
+            )
+            
+            # Calculate topology perturbation factor (tPF)
+            # tPF measures how much the pathway topology is perturbed
+            tpf = self._calculate_topology_perturbation_factor(
+                overlapping_genes, pathway_genes, pathway_network
+            )
+            
+            # Calculate pathway impact score
+            # SPIA combines ORA p-value with topology
+            impact_score = -np.log10(p_ora + 1e-300) * (1 + tpf)
+            
+            # Calculate combined p-value
+            # Simplified: use impact score to derive p-value
+            p_combined = np.exp(-impact_score / 10.0)
+            
+            pathway_result = PathwayResult(
+                pathway_id=pathway_id,
+                pathway_name=pathway_id,
+                database=DatabaseType.KEGG,  # Would get from context
+                p_value=float(p_combined),
+                adjusted_p_value=float(p_combined),  # Will be corrected
+                enrichment_score=float(impact_score),
+                overlap_count=overlap_count,
+                pathway_count=pathway_count,
+                input_count=total_genes,
+                overlapping_genes=overlapping_genes,
+                analysis_method="SPIA"
+            )
+            
+            pathway_results.append(pathway_result)
+        
+        # Apply multiple testing correction
+        if pathway_results:
+            p_values = [r.p_value for r in pathway_results]
+            method_map = {
+                CorrectionMethod.FDR_BH: 'fdr_bh',
+                CorrectionMethod.BONFERRONI: 'bonferroni',
+                CorrectionMethod.HOLM: 'holm',
+            }
+            stats_method = method_map.get(correction_method, 'fdr_bh')
+            corrected = multipletests(p_values, method=stats_method)[1]
+            for i, result in enumerate(pathway_results):
+                result.adjusted_p_value = corrected[i]
+        
+        return sorted(pathway_results, key=lambda x: x.adjusted_p_value)
+    
+    def _calculate_topology_perturbation_factor(
+        self,
+        overlapping_genes: List[str],
+        pathway_genes: List[str],
+        network: nx.Graph
+    ) -> float:
+        """
+        Calculate topology perturbation factor (tPF) for SPIA.
+        
+        Measures how much the pathway topology is perturbed by
+        the overlapping genes.
+        """
+        if not overlapping_genes or network.number_of_nodes() == 0:
+            return 0.0
+        
+        # Calculate shortest paths between overlapping genes
+        path_lengths = []
+        for i, gene1 in enumerate(overlapping_genes):
+            if gene1 not in network:
+                continue
+            for gene2 in overlapping_genes[i+1:]:
+                if gene2 not in network:
+                    continue
+                try:
+                    if nx.has_path(network, gene1, gene2):
+                        length = nx.shortest_path_length(network, gene1, gene2)
+                        path_lengths.append(length)
+                except nx.NetworkXNoPath:
+                    pass
+        
+        if not path_lengths:
+            return 0.0
+        
+        # Calculate average path length
+        avg_path_length = np.mean(path_lengths)
+        
+        # Normalize by expected path length
+        # (simplified - would use pathway-specific expected values)
+        expected_length = 3.0  # Typical pathway diameter
+        tpf = max(0.0, (expected_length - avg_path_length) / expected_length)
+        
+        return float(tpf)
     
     def _calculate_coverage(
         self, 

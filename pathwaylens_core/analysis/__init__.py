@@ -2,7 +2,7 @@
 Analysis module for PathwayLens.
 
 This module provides pathway analysis capabilities including ORA, GSEA,
-GSVA, and other enrichment analysis methods.
+GSVA, network-based methods, Bayesian methods, and other enrichment analysis methods.
 """
 
 from .engine import AnalysisEngine
@@ -12,6 +12,9 @@ from .gsva_engine import GSVAEngine
 from .topology_engine import TopologyEngine
 from .multi_omics_engine import MultiOmicsEngine
 from .consensus_engine import ConsensusEngine
+from .network_engine import NetworkEngine
+from .bayesian_engine import BayesianEngine
+from .pathway_interaction_engine import PathwayInteractionEngine, PathwayInteraction, InteractionAnalysisResult
 from .schemas import AnalysisResult, PathwayResult, AnalysisParameters
 
 __all__ = [
@@ -22,6 +25,11 @@ __all__ = [
     "TopologyEngine",
     "MultiOmicsEngine",
     "ConsensusEngine",
+    "NetworkEngine",
+    "BayesianEngine",
+    "PathwayInteractionEngine",
+    "PathwayInteraction",
+    "InteractionAnalysisResult",
     "AnalysisResult",
     "PathwayResult",
     "AnalysisParameters",

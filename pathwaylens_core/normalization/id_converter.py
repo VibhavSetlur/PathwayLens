@@ -30,17 +30,48 @@ class ConversionResult:
             self.alternative_mappings = []
 
 
+@dataclass
+class ConversionStatistics:
+    """Statistics for a batch conversion operation."""
+    total_input: int
+    successful: int
+    failed: int
+    ambiguous: int
+    average_confidence: float
+    source_breakdown: Dict[str, int]
+    error_summary: Dict[str, int]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert statistics to dictionary."""
+        return {
+            'total_input': self.total_input,
+            'successful': self.successful,
+            'failed': self.failed,
+            'ambiguous': self.ambiguous,
+            'success_rate': self.successful / self.total_input if self.total_input > 0 else 0.0,
+            'average_confidence': self.average_confidence,
+            'source_breakdown': self.source_breakdown,
+            'error_summary': self.error_summary
+        }
+
+
 class IDConverter:
     """Converts gene identifiers across different formats and databases."""
     
-    def __init__(self, rate_limit: float = 1.0):
+    # Batch size for efficient processing
+    DEFAULT_BATCH_SIZE = 1000
+    MAX_BATCH_SIZE = 10000
+    
+    def __init__(self, rate_limit: float = 1.0, batch_size: int = DEFAULT_BATCH_SIZE):
         """
         Initialize ID converter.
         
         Args:
             rate_limit: Rate limit in requests per second
+            batch_size: Number of identifiers to process per batch
         """
         self.rate_limit = rate_limit
+        self.batch_size = min(batch_size, self.MAX_BATCH_SIZE)
         self.logger = logger.bind(module="id_converter")
         self.session = None
         
@@ -51,6 +82,9 @@ class IDConverter:
         
         # Rate limiting
         self.last_request_time = 0
+        
+        # Statistics tracking
+        self._conversion_stats: Optional[ConversionStatistics] = None
     
     async def __aenter__(self):
         """Async context manager entry."""
@@ -80,10 +114,13 @@ class IDConverter:
         input_type: IDType,
         output_type: IDType,
         species: SpeciesType,
-        ambiguity_policy: AmbiguityPolicy = AmbiguityPolicy.EXPAND
+        ambiguity_policy: AmbiguityPolicy = AmbiguityPolicy.EXPAND,
+        track_statistics: bool = True
     ) -> List[ConversionResult]:
         """
         Convert identifiers from input type to output type.
+        
+        Supports batch processing for large identifier lists to improve efficiency.
         
         Args:
             identifiers: List of input identifiers
@@ -91,15 +128,31 @@ class IDConverter:
             output_type: Type of output identifiers
             species: Species of the identifiers
             ambiguity_policy: How to handle ambiguous mappings
+            track_statistics: Whether to track conversion statistics
             
         Returns:
             List of conversion results
+            
+        Example:
+            >>> converter = IDConverter()
+            >>> async with converter:
+            ...     results = await converter.convert_identifiers(
+            ...         ["BRCA1", "TP53", "EGFR"],
+            ...         IDType.SYMBOL,
+            ...         IDType.ENSEMBL,
+            ...         SpeciesType.HUMAN
+            ...     )
+            >>> print(f"Converted {len(results)} identifiers")
         """
+        if not identifiers:
+            self.logger.warning("Empty identifier list provided")
+            return []
+        
         self.logger.info(f"Converting {len(identifiers)} identifiers from {input_type} to {output_type}")
         
         # If input and output types are the same, return identity mapping
         if input_type == output_type:
-            return [
+            identity_results = [
                 ConversionResult(
                     input_id=id_val,
                     output_id=id_val,
@@ -108,9 +161,19 @@ class IDConverter:
                 )
                 for id_val in identifiers
             ]
+            if track_statistics:
+                self._update_statistics(identity_results, {})
+            return identity_results
+        
+        # Process in batches for large lists
+        if len(identifiers) > self.batch_size:
+            return await self._convert_in_batches(
+                identifiers, input_type, output_type, species, ambiguity_policy, track_statistics
+            )
         
         # Try different conversion methods
         results = []
+        errors: Dict[str, int] = {}
         
         # Method 1: MyGene.info
         try:
@@ -119,7 +182,9 @@ class IDConverter:
             )
             results.extend(mygene_results)
         except Exception as e:
-            self.logger.warning(f"MyGene conversion failed: {e}")
+            error_msg = str(e)
+            errors[error_msg] = errors.get(error_msg, 0) + 1
+            self.logger.warning(f"MyGene conversion failed: {e}. This may affect conversion accuracy.")
         
         # Method 2: Ensembl
         try:
@@ -128,7 +193,9 @@ class IDConverter:
             )
             results.extend(ensembl_results)
         except Exception as e:
-            self.logger.warning(f"Ensembl conversion failed: {e}")
+            error_msg = str(e)
+            errors[error_msg] = errors.get(error_msg, 0) + 1
+            self.logger.warning(f"Ensembl conversion failed: {e}. This may affect conversion accuracy.")
         
         # Method 3: NCBI
         try:
@@ -137,13 +204,63 @@ class IDConverter:
             )
             results.extend(ncbi_results)
         except Exception as e:
-            self.logger.warning(f"NCBI conversion failed: {e}")
+            error_msg = str(e)
+            errors[error_msg] = errors.get(error_msg, 0) + 1
+            self.logger.warning(f"NCBI conversion failed: {e}. This may affect conversion accuracy.")
         
         # Merge and deduplicate results
         merged_results = self._merge_conversion_results(results, ambiguity_policy)
         
+        # Track statistics
+        if track_statistics:
+            self._update_statistics(merged_results, errors)
+        
         self.logger.info(f"Conversion completed: {len(merged_results)} results")
         return merged_results
+    
+    async def _convert_in_batches(
+        self,
+        identifiers: List[str],
+        input_type: IDType,
+        output_type: IDType,
+        species: SpeciesType,
+        ambiguity_policy: AmbiguityPolicy,
+        track_statistics: bool
+    ) -> List[ConversionResult]:
+        """Convert identifiers in batches for efficient processing."""
+        self.logger.info(f"Processing {len(identifiers)} identifiers in batches of {self.batch_size}")
+        
+        all_results = []
+        total_batches = (len(identifiers) + self.batch_size - 1) // self.batch_size
+        
+        for i in range(0, len(identifiers), self.batch_size):
+            batch = identifiers[i:i + self.batch_size]
+            batch_num = (i // self.batch_size) + 1
+            
+            self.logger.debug(f"Processing batch {batch_num}/{total_batches} ({len(batch)} identifiers)")
+            
+            try:
+                batch_results = await self.convert_identifiers(
+                    batch, input_type, output_type, species, ambiguity_policy, track_statistics=False
+                )
+                all_results.extend(batch_results)
+            except Exception as e:
+                self.logger.error(f"Batch {batch_num} failed: {e}. Continuing with remaining batches.")
+                # Add failed results
+                for id_val in batch:
+                    all_results.append(ConversionResult(
+                        input_id=id_val,
+                        output_id=None,
+                        confidence=0.0,
+                        source="error",
+                        is_ambiguous=False
+                    ))
+        
+        # Update statistics for entire batch
+        if track_statistics:
+            self._update_statistics(all_results, {})
+        
+        return all_results
     
     async def _convert_via_mygene(
         self,
@@ -424,7 +541,8 @@ class IDConverter:
         input_type: IDType,
         output_type: IDType,
         species: SpeciesType,
-        ambiguity_policy: AmbiguityPolicy = AmbiguityPolicy.EXPAND
+        ambiguity_policy: AmbiguityPolicy = AmbiguityPolicy.EXPAND,
+        track_statistics: bool = True
     ) -> List[ConversionResult]:
         """
         Synchronous version of convert_identifiers.
@@ -435,10 +553,85 @@ class IDConverter:
             output_type: Type of output identifiers
             species: Species of the identifiers
             ambiguity_policy: How to handle ambiguous mappings
+            track_statistics: Whether to track conversion statistics
             
         Returns:
             List of conversion results
         """
         return asyncio.run(self.convert_identifiers(
-            identifiers, input_type, output_type, species, ambiguity_policy
+            identifiers, input_type, output_type, species, ambiguity_policy, track_statistics
         ))
+    
+    def _update_statistics(
+        self, 
+        results: List[ConversionResult], 
+        errors: Dict[str, int]
+    ) -> None:
+        """Update conversion statistics."""
+        if not results:
+            return
+        
+        successful = sum(1 for r in results if r.output_id is not None)
+        failed = sum(1 for r in results if r.output_id is None)
+        ambiguous = sum(1 for r in results if r.is_ambiguous)
+        
+        confidences = [r.confidence for r in results if r.confidence > 0]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+        
+        source_breakdown: Dict[str, int] = {}
+        for r in results:
+            source_breakdown[r.source] = source_breakdown.get(r.source, 0) + 1
+        
+        self._conversion_stats = ConversionStatistics(
+            total_input=len(results),
+            successful=successful,
+            failed=failed,
+            ambiguous=ambiguous,
+            average_confidence=avg_confidence,
+            source_breakdown=source_breakdown,
+            error_summary=errors
+        )
+    
+    def get_statistics(self) -> Optional[ConversionStatistics]:
+        """
+        Get conversion statistics from the last conversion operation.
+        
+        Returns:
+            ConversionStatistics object or None if no conversion has been performed
+        """
+        return self._conversion_stats
+    
+    def get_conversion_report(self) -> Dict[str, Any]:
+        """
+        Get a detailed conversion report.
+        
+        Returns:
+            Dictionary containing conversion statistics and recommendations
+        """
+        if not self._conversion_stats:
+            return {
+                'status': 'no_conversions',
+                'message': 'No conversion operations have been performed yet'
+            }
+        
+        stats_dict = self._conversion_stats.to_dict()
+        success_rate = stats_dict['success_rate']
+        
+        # Add recommendations
+        recommendations = []
+        if success_rate < 0.5:
+            recommendations.append("Low success rate detected. Consider checking input identifier format.")
+        if self._conversion_stats.ambiguous > 0:
+            recommendations.append(f"{self._conversion_stats.ambiguous} ambiguous mappings found. Review ambiguity policy.")
+        if self._conversion_stats.average_confidence < 0.7:
+            recommendations.append("Low average confidence. Consider using multiple conversion sources.")
+        
+        return {
+            'statistics': stats_dict,
+            'recommendations': recommendations,
+            'summary': {
+                'total_processed': self._conversion_stats.total_input,
+                'success_rate': f"{success_rate * 100:.1f}%",
+                'average_confidence': f"{self._conversion_stats.average_confidence:.3f}"
+            }
+        }

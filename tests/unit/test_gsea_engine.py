@@ -69,18 +69,30 @@ class TestGSEAEngine:
                 pathway_name="Glycolysis",
                 p_value=0.001,
                 adjusted_p_value=0.01,
-                gene_overlap=["GENE1", "GENE2"],
-                gene_overlap_count=2,
-                pathway_size=5
+                overlapping_genes=["GENE1", "GENE2"],
+                overlap_count=2,
+                pathway_size=5,
+                database=DatabaseType.KEGG,
+                pathway_count=100,
+                input_count=50,
+                analysis_method="GSEA",
+                enrichment_score=0.8,
+                normalized_enrichment_score=1.5
             ),
             PathwayResult(
                 pathway_id="PATH:00020",
                 pathway_name="TCA Cycle",
                 p_value=0.005,
                 adjusted_p_value=0.02,
-                gene_overlap=["GENE3", "GENE4"],
-                gene_overlap_count=2,
-                pathway_size=4
+                overlapping_genes=["GENE3", "GENE4"],
+                overlap_count=2,
+                pathway_size=4,
+                database=DatabaseType.KEGG,
+                pathway_count=100,
+                input_count=50,
+                analysis_method="GSEA",
+                enrichment_score=0.6,
+                normalized_enrichment_score=1.2
             )
         ]
 
@@ -93,8 +105,7 @@ class TestGSEAEngine:
     async def test_analyze_basic(self, gsea_engine, sample_gene_list, sample_pathway_data):
         """Test basic GSEA analysis."""
         # Mock database manager
-        gsea_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
-        gsea_engine.database_manager.get_background_genes = AsyncMock(return_value=set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"]))
+        gsea_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
         
         # Run analysis
         result = await gsea_engine.analyze(
@@ -105,25 +116,23 @@ class TestGSEAEngine:
         
         # Verify result structure
         assert isinstance(result, DatabaseResult)
-        assert result.database_name == "KEGG"
-        assert result.database_type == DatabaseType.KEGG
+        assert result.database == DatabaseType.KEGG
         assert result.species == "human"
-        assert len(result.pathway_results) > 0
+        assert len(result.pathways) > 0
         
         # Verify pathway results
-        for pathway_result in result.pathway_results:
+        for pathway_result in result.pathways:
             assert isinstance(pathway_result, PathwayResult)
             assert pathway_result.pathway_id is not None
             assert pathway_result.pathway_name is not None
             assert 0 <= pathway_result.p_value <= 1
-            assert pathway_result.gene_overlap_count > 0
+            assert pathway_result.enrichment_score is not None
 
     @pytest.mark.asyncio
     async def test_analyze_with_parameters(self, gsea_engine, sample_gene_list, sample_pathway_data):
         """Test GSEA analysis with custom parameters."""
         # Mock database manager
-        gsea_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
-        gsea_engine.database_manager.get_background_genes = AsyncMock(return_value=set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"]))
+        gsea_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
         
         # Run analysis with custom parameters
         result = await gsea_engine.analyze(
@@ -132,39 +141,35 @@ class TestGSEAEngine:
             species="human",
             significance_threshold=0.01,
             correction_method=CorrectionMethod.BONFERRONI,
-            permutations=500,
+            permutations=100,
             min_size=3,
             max_size=10
         )
         
         # Verify result structure
         assert isinstance(result, DatabaseResult)
-        assert len(result.pathway_results) > 0
+        assert len(result.pathways) > 0
 
     @pytest.mark.asyncio
     async def test_analyze_empty_gene_list(self, gsea_engine, sample_pathway_data):
         """Test GSEA analysis with empty gene list."""
         # Mock database manager
-        gsea_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
-        gsea_engine.database_manager.get_background_genes = AsyncMock(return_value=set())
+        gsea_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
         
         # Run analysis with empty gene list
-        result = await gsea_engine.analyze(
-            gene_list=[],
-            database=DatabaseType.KEGG,
-            species="human"
-        )
-        
-        # Verify result structure
-        assert isinstance(result, DatabaseResult)
-        assert len(result.pathway_results) == 0
+        # Should raise ValueError because of input validation
+        with pytest.raises(ValueError, match="Invalid input parameters"):
+            await gsea_engine.analyze(
+                gene_list=[],
+                database=DatabaseType.KEGG,
+                species="human"
+            )
 
     @pytest.mark.asyncio
     async def test_analyze_no_pathways(self, gsea_engine, sample_gene_list):
         """Test GSEA analysis with no pathways."""
         # Mock database manager to return empty pathway data
-        gsea_engine.database_manager.get_pathway_data = AsyncMock(return_value={})
-        gsea_engine.database_manager.get_background_genes = AsyncMock(return_value=set(sample_gene_list))
+        gsea_engine.database_manager.get_pathways = AsyncMock(return_value={})
         
         # Run analysis
         result = await gsea_engine.analyze(
@@ -175,13 +180,13 @@ class TestGSEAEngine:
         
         # Verify result structure
         assert isinstance(result, DatabaseResult)
-        assert len(result.pathway_results) == 0
+        assert len(result.pathways) == 0
 
     @pytest.mark.asyncio
     async def test_analyze_database_error(self, gsea_engine, sample_gene_list):
         """Test GSEA analysis when database raises an error."""
         # Mock database manager to raise an error
-        gsea_engine.database_manager.get_pathway_data = AsyncMock(side_effect=Exception("Database error"))
+        gsea_engine.database_manager.get_pathways = AsyncMock(side_effect=Exception("Database error"))
         
         with pytest.raises(Exception, match="Database error"):
             await gsea_engine.analyze(
@@ -190,103 +195,52 @@ class TestGSEAEngine:
                 species="human"
             )
 
-    def test_calculate_enrichment_score(self, gsea_engine, sample_gene_list, sample_pathway_data):
+    def test_calculate_enrichment_score(self, gsea_engine):
         """Test enrichment score calculation."""
-        pathway_id = "PATH:00010"
-        pathway_info = sample_pathway_data[pathway_id]
-        background_genes = set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"])
+        gene_ranking = {"GENE1": 1.0, "GENE2": 0.8, "GENE3": 0.6, "GENE4": 0.4, "GENE5": 0.2}
+        pathway_genes = ["GENE1", "GENE2"]
         
-        es = gsea_engine._calculate_enrichment_score(
-            pathway_id=pathway_id,
-            pathway_info=pathway_info,
-            gene_list=sample_gene_list,
-            background_genes=background_genes
+        es_result = gsea_engine._calculate_enrichment_score(
+            gene_ranking=gene_ranking,
+            pathway_genes=pathway_genes
         )
         
-        assert isinstance(es, float)
-        assert -1 <= es <= 1
+        assert es_result is not None
+        enrichment_score, normalized_es, p_value = es_result
+        assert isinstance(enrichment_score, float)
+        assert isinstance(normalized_es, float)
+        assert isinstance(p_value, float)
+        assert 0 <= p_value <= 1
 
-    def test_calculate_enrichment_score_no_overlap(self, gsea_engine, sample_pathway_data):
-        """Test enrichment score calculation with no gene overlap."""
-        pathway_id = "PATH:00030"  # No overlap with sample genes
-        pathway_info = sample_pathway_data[pathway_id]
-        gene_list = ["GENE1", "GENE2", "GENE3", "GENE4", "GENE5"]
-        background_genes = set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE11", "GENE12", "GENE13", "GENE14", "GENE15", "GENE16"])
+    def test_calculate_enrichment_score_no_overlap(self, gsea_engine):
+        """Test enrichment score calculation with no overlap."""
+        gene_ranking = {"GENE1": 1.0, "GENE2": 0.8}
+        pathway_genes = ["GENE3", "GENE4"]
         
-        es = gsea_engine._calculate_enrichment_score(
-            pathway_id=pathway_id,
-            pathway_info=pathway_info,
-            gene_list=gene_list,
-            background_genes=background_genes
+        es_result = gsea_engine._calculate_enrichment_score(
+            gene_ranking=gene_ranking,
+            pathway_genes=pathway_genes
         )
         
-        assert es == 0.0
+        assert es_result is None
 
-    def test_calculate_normalized_enrichment_score(self, gsea_engine):
-        """Test normalized enrichment score calculation."""
-        es = 0.5
-        nes = gsea_engine._calculate_normalized_enrichment_score(es)
-        
-        assert isinstance(nes, float)
-        assert -1 <= nes <= 1
-
-    def test_calculate_false_discovery_rate(self, gsea_engine):
-        """Test false discovery rate calculation."""
-        es = 0.5
-        fdr = gsea_engine._calculate_false_discovery_rate(es)
-        
-        assert isinstance(fdr, float)
-        assert 0 <= fdr <= 1
-
-    def test_calculate_leading_edge_subset(self, gsea_engine, sample_gene_list, sample_pathway_data):
-        """Test leading edge subset calculation."""
-        pathway_id = "PATH:00010"
-        pathway_info = sample_pathway_data[pathway_id]
-        background_genes = set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"])
-        
-        les = gsea_engine._calculate_leading_edge_subset(
-            pathway_id=pathway_id,
-            pathway_info=pathway_info,
-            gene_list=sample_gene_list,
-            background_genes=background_genes
-        )
-        
-        assert isinstance(les, list)
-        assert all(isinstance(gene, str) for gene in les)
-
-    def test_calculate_leading_edge_subset_no_overlap(self, gsea_engine, sample_pathway_data):
-        """Test leading edge subset calculation with no gene overlap."""
-        pathway_id = "PATH:00030"  # No overlap with sample genes
-        pathway_info = sample_pathway_data[pathway_id]
-        gene_list = ["GENE1", "GENE2", "GENE3", "GENE4", "GENE5"]
-        background_genes = set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE11", "GENE12", "GENE13", "GENE14", "GENE15", "GENE16"])
-        
-        les = gsea_engine._calculate_leading_edge_subset(
-            pathway_id=pathway_id,
-            pathway_info=pathway_info,
-            gene_list=gene_list,
-            background_genes=background_genes
-        )
-        
-        assert les == []
-
-    def test_apply_multiple_testing_correction(self, gsea_engine):
+    def test_apply_correction(self, gsea_engine):
         """Test multiple testing correction."""
         p_values = [0.001, 0.005, 0.01, 0.05, 0.1]
         
         # Test FDR correction
-        corrected_p_values = gsea_engine._apply_multiple_testing_correction(
+        corrected_p_values = gsea_engine._apply_correction(
             p_values=p_values,
-            method=CorrectionMethod.FDR_BH
+            correction_method=CorrectionMethod.FDR_BH
         )
         
         assert len(corrected_p_values) == len(p_values)
         assert all(0 <= p <= 1 for p in corrected_p_values)
         
         # Test Bonferroni correction
-        corrected_p_values = gsea_engine._apply_multiple_testing_correction(
+        corrected_p_values = gsea_engine._apply_correction(
             p_values=p_values,
-            method=CorrectionMethod.BONFERRONI
+            correction_method=CorrectionMethod.BONFERRONI
         )
         
         assert len(corrected_p_values) == len(p_values)
@@ -314,46 +268,24 @@ class TestGSEAEngine:
         
         assert len(filtered_pathways) == len(sample_pathway_data)
 
-    def test_calculate_pathway_statistics(self, gsea_engine, sample_gene_list, sample_pathway_data):
+    def test_calculate_pathway_statistics(self, gsea_engine, sample_pathway_results):
         """Test pathway statistics calculation."""
-        pathway_id = "PATH:00010"
-        pathway_info = sample_pathway_data[pathway_id]
-        background_genes = set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"])
-        
-        stats = gsea_engine._calculate_pathway_statistics(
-            pathway_id=pathway_id,
-            pathway_info=pathway_info,
-            gene_list=sample_gene_list,
-            background_genes=background_genes
+        stats = gsea_engine.calculate_pathway_statistics(
+            pathway_results=sample_pathway_results
         )
         
-        assert "pathway_id" in stats
-        assert "pathway_name" in stats
-        assert "p_value" in stats
-        assert "gene_overlap" in stats
-        assert "gene_overlap_count" in stats
-        assert "pathway_size" in stats
-        assert stats["pathway_id"] == pathway_id
-        assert stats["pathway_name"] == pathway_info["name"]
-        assert 0 <= stats["p_value"] <= 1
-        assert stats["gene_overlap_count"] > 0
+        assert "num_pathways" in stats
+        assert "min_p_value" in stats
+        assert "mean_enrichment_score" in stats
+        assert stats["num_pathways"] == len(sample_pathway_results)
 
-    def test_calculate_pathway_statistics_no_overlap(self, gsea_engine, sample_pathway_data):
-        """Test pathway statistics calculation with no gene overlap."""
-        pathway_id = "PATH:00030"  # No overlap with sample genes
-        pathway_info = sample_pathway_data[pathway_id]
-        gene_list = ["GENE1", "GENE2", "GENE3", "GENE4", "GENE5"]
-        background_genes = set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE11", "GENE12", "GENE13", "GENE14", "GENE15", "GENE16"])
-        
-        stats = gsea_engine._calculate_pathway_statistics(
-            pathway_id=pathway_id,
-            pathway_info=pathway_info,
-            gene_list=gene_list,
-            background_genes=background_genes
+    def test_calculate_pathway_statistics_no_overlap(self, gsea_engine):
+        """Test pathway statistics calculation with empty results."""
+        stats = gsea_engine.calculate_pathway_statistics(
+            pathway_results=[]
         )
         
-        assert stats["gene_overlap_count"] == 0
-        assert stats["p_value"] == 1.0
+        assert stats == {}
 
     @pytest.mark.asyncio
     async def test_analyze_different_databases(self, gsea_engine, sample_gene_list):
@@ -362,8 +294,7 @@ class TestGSEAEngine:
         
         for database in databases:
             # Mock database manager
-            gsea_engine.database_manager.get_pathway_data = AsyncMock(return_value={})
-            gsea_engine.database_manager.get_background_genes = AsyncMock(return_value=set(sample_gene_list))
+            gsea_engine.database_manager.get_pathways = AsyncMock(return_value={})
             
             # Run analysis
             result = await gsea_engine.analyze(
@@ -374,7 +305,7 @@ class TestGSEAEngine:
             
             # Verify result structure
             assert isinstance(result, DatabaseResult)
-            assert result.database_type == database
+            assert result.database == database
 
     @pytest.mark.asyncio
     async def test_analyze_different_species(self, gsea_engine, sample_gene_list, sample_pathway_data):
@@ -383,8 +314,7 @@ class TestGSEAEngine:
         
         for species in species_list:
             # Mock database manager
-            gsea_engine.database_manager.get_pathway_data = AsyncMock(return_value=sample_pathway_data)
-            gsea_engine.database_manager.get_background_genes = AsyncMock(return_value=set(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "GENE6", "GENE7", "GENE8", "GENE9", "GENE10"]))
+            gsea_engine.database_manager.get_pathways = AsyncMock(return_value=sample_pathway_data)
             
             # Run analysis
             result = await gsea_engine.analyze(

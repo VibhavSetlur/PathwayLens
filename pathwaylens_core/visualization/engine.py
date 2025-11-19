@@ -22,6 +22,8 @@ from .schemas import (
 )
 from ..analysis.schemas import AnalysisResult
 from ..comparison.schemas import ComparisonResult
+from .plotly_renderer import PlotlyRenderer
+from .multi_omics_visualizer import MultiOmicsVisualizer
 
 
 class VisualizationEngine:
@@ -30,6 +32,8 @@ class VisualizationEngine:
     def __init__(self):
         """Initialize the visualization engine."""
         self.logger = logger.bind(module="visualization_engine")
+        self.renderer = PlotlyRenderer()
+        self.multi_omics_visualizer = MultiOmicsVisualizer()
         self.plot_renderers = {
             PlotType.DOT_PLOT: self._create_dot_plot,
             PlotType.VOLCANO_PLOT: self._create_volcano_plot,
@@ -45,8 +49,60 @@ class VisualizationEngine:
             PlotType.GENE_EXPRESSION: self._create_gene_expression_plot,
             PlotType.TIME_SERIES: self._create_time_series_plot,
             PlotType.COMPARISON_PLOT: self._create_comparison_plot,
-            PlotType.CONSENSUS_PLOT: self._create_consensus_plot
+            PlotType.CONSENSUS_PLOT: self._create_consensus_plot,
+            PlotType.UPSET_PLOT: self._create_upset_plot,
+            PlotType.MULTI_OMICS_HEATMAP: self._create_multi_omics_heatmap,
+            PlotType.MULTI_OMICS_NETWORK: self._create_multi_omics_network,
+            PlotType.MULTI_OMICS_SANKEY: self._create_multi_omics_sankey
         }
+    
+    async def _create_multi_omics_heatmap(
+        self,
+        data: Union[AnalysisResult, ComparisonResult, Dict[str, Any]],
+        parameters: VisualizationParameters
+    ) -> go.Figure:
+        """Create multi-omics heatmap visualization."""
+        if isinstance(data, dict) and 'omics_data' in data:
+            omics_data = data['omics_data']
+        elif isinstance(data, dict) and 'multi_omics_results' in data:
+            omics_data = data['multi_omics_results']
+        else:
+            return await self._create_heatmap(data, parameters)
+        
+        return self.multi_omics_visualizer.create_multi_omics_heatmap(
+            omics_data, max_pathways=parameters.max_pathways
+        )
+    
+    async def _create_multi_omics_network(
+        self,
+        data: Union[AnalysisResult, ComparisonResult, Dict[str, Any]],
+        parameters: VisualizationParameters
+    ) -> go.Figure:
+        """Create multi-omics network visualization."""
+        if isinstance(data, dict) and 'cross_omics_network' in data:
+            network = data['cross_omics_network']
+        else:
+            return await self._create_network_plot(data, parameters)
+        
+        return self.multi_omics_visualizer.create_multi_omics_network(
+            network, layout=parameters.network_layout
+        )
+    
+    async def _create_multi_omics_sankey(
+        self,
+        data: Union[AnalysisResult, ComparisonResult, Dict[str, Any]],
+        parameters: VisualizationParameters
+    ) -> go.Figure:
+        """Create Sankey diagram for multi-omics data flow."""
+        if isinstance(data, dict) and 'cross_omics_mapping' in data:
+            mapping = data['cross_omics_mapping']
+        else:
+            return go.Figure().add_annotation(
+                text="Multi-omics mapping data required for Sankey diagram",
+                xref="paper", yref="paper", x=0.5, y=0.5
+            )
+        
+        return self.multi_omics_visualizer.create_multi_omics_sankey(mapping)
     
     async def visualize(
         self,
@@ -648,6 +704,39 @@ class VisualizationEngine:
         )
         
         return fig
+
+    async def _create_upset_plot(
+        self,
+        data: Union[AnalysisResult, ComparisonResult, Dict[str, Any]],
+        parameters: VisualizationParameters
+    ) -> go.Figure:
+        """Create UpSet plot from comparison results or raw sets."""
+        try:
+            # If data is a ComparisonResult, derive sets of pathways per dataset
+            if isinstance(data, ComparisonResult):
+                sets: Dict[str, List[str]] = {}
+                # Rebuild per-dataset pathway sets from database_results
+                # ComparisonResult may not carry raw per-dataset results, so expect optional attachment under extra fields
+                extra = getattr(data, "extra", None)
+                if extra and isinstance(extra, dict) and "dataset_pathways" in extra:
+                    sets = {k: list(v) for k, v in extra["dataset_pathways"].items()}
+                else:
+                    # Fallback: use pathway_concordance to infer presence across datasets
+                    presence: Dict[str, set] = {}
+                    for pc in getattr(data, "pathway_concordance", []) or []:
+                        # pc.p_values has keys for dataset names where pathway considered
+                        for ds in pc.p_values.keys():
+                            presence.setdefault(ds, set()).add(f"{pc.database}_{pc.pathway_id}")
+                    sets = {k: list(v) for k, v in presence.items()}
+            elif isinstance(data, dict) and "sets" in data:
+                sets = {k: list(v) for k, v in data["sets"].items()}
+            else:
+                sets = {}
+
+            return self.renderer.create_upset_plot(sets, title="UpSet - Dataset intersections")
+        except Exception as e:
+            self.logger.error(f"Failed to create UpSet plot: {e}")
+            return go.Figure()
     
     async def _create_manhattan_plot(
         self, 

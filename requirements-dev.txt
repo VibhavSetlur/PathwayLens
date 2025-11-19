@@ -1,0 +1,28 @@
+# PathwayLens 2.0 - Development Dependencies
+# ============================================
+# Install with: pip install -r requirements-dev.txt
+# Or use: pip install -e ".[dev]"
+
+# Include base requirements
+-r requirements.txt
+
+# Additional development tools
+pytest-xdist>=3.0.0  # Parallel test execution
+pytest-html>=3.2.0   # HTML test reports
+pytest-timeout>=2.1.0  # Test timeout handling
+
+# Type checking stubs
+types-requests>=2.31.0
+types-PyYAML>=6.0.0
+
+# Development utilities
+ipython>=8.0.0
+ipdb>=0.13.0  # Enhanced debugger
+
+# Documentation
+sphinx>=7.0.0
+sphinx-rtd-theme>=1.3.0
+myst-parser>=2.0.0
+
+
+

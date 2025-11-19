@@ -10,7 +10,7 @@ from scipy import stats
 from loguru import logger
 
 from .schemas import (
-    DatabaseResult, ConsensusResult, ConsensusMethod, PathwayResult
+    DatabaseResult, ConsensusResult, ConsensusMethod, PathwayResult, DatabaseType
 )
 
 
@@ -191,10 +191,19 @@ class ConsensusEngine:
         # Calculate confidence score based on database agreement
         confidence_score = self._calculate_confidence_score(databases)
         
+        # Get representative database type
+        db_name = list(databases.keys())[0]
+        try:
+            database_type = DatabaseType(db_name.lower())
+        except ValueError:
+            # Fallback if not a valid enum value, though this shouldn't happen with valid input
+            self.logger.warning(f"Unknown database type: {db_name}, defaulting to KEGG")
+            database_type = DatabaseType.KEGG
+
         return PathwayResult(
             pathway_id=pathway_info['pathway_id'],
             pathway_name=pathway_info['pathway_name'],
-            database=list(databases.keys())[0],  # Use first database as representative
+            database=database_type,
             p_value=consensus_p_value,
             adjusted_p_value=consensus_p_value,  # Will be corrected later
             enrichment_score=consensus_enrichment_score,
@@ -230,6 +239,12 @@ class ConsensusEngine:
             return self._tippett_method(p_values)
         elif method == ConsensusMethod.MUDHOLKAR_GEORGE:
             return self._mudholkar_george_method(p_values)
+        elif method == ConsensusMethod.WILKINSON:
+            return self._wilkinson_method(p_values)
+        elif method == ConsensusMethod.PEARSON:
+            return self._pearson_method(p_values)
+        elif method == ConsensusMethod.GEOMETRIC_MEAN:
+            return self._geometric_mean_method(p_values)
         else:
             # Default to Stouffer
             return self._stouffer_method(p_values)
@@ -270,6 +285,76 @@ class ConsensusEngine:
         logits = [np.log(p / (1 - p)) for p in p_values]
         combined_logit = sum(logits) / np.sqrt(len(logits))
         return 1 / (1 + np.exp(combined_logit))
+    
+    def _wilkinson_method(self, p_values: List[float], r: int = None) -> float:
+        """
+        Wilkinson's method for combining p-values.
+        
+        Uses the r-th smallest p-value. If r is None, uses median.
+        """
+        if not p_values:
+            return 1.0
+        
+        sorted_p = sorted(p_values)
+        n = len(sorted_p)
+        
+        if r is None:
+            # Use median
+            r = (n + 1) // 2
+        
+        r = max(1, min(r, n))  # Ensure r is in valid range
+        
+        # Use r-th smallest p-value
+        p_r = sorted_p[r - 1]
+        
+        # Calculate combined p-value using beta distribution
+        # P(X <= p_r) where X ~ Beta(r, n - r + 1)
+        from scipy.stats import beta
+        combined_p = beta.cdf(p_r, r, n - r + 1)
+        
+        return float(combined_p)
+    
+    def _pearson_method(self, p_values: List[float]) -> float:
+        """
+        Pearson's method for combining p-values.
+        
+        Uses product of p-values with chi-square distribution.
+        """
+        if not p_values:
+            return 1.0
+        
+        # Product of p-values
+        product = np.prod(p_values)
+        
+        # Use chi-square distribution
+        # -2 * log(product) ~ chi2(2n)
+        n = len(p_values)
+        chi2_stat = -2 * np.log(product)
+        df = 2 * n
+        
+        combined_p = 1 - stats.chi2.cdf(chi2_stat, df)
+        
+        return float(combined_p)
+    
+    def _geometric_mean_method(self, p_values: List[float]) -> float:
+        """
+        Geometric mean method for combining p-values.
+        
+        Uses geometric mean of p-values, which is more robust to outliers
+        than arithmetic mean.
+        """
+        if not p_values:
+            return 1.0
+        
+        # Geometric mean
+        geometric_mean = np.exp(np.mean(np.log(p_values)))
+        
+        # Adjust for multiple testing
+        # Use Bonferroni-like correction
+        n = len(p_values)
+        adjusted_p = min(1.0, geometric_mean * n)
+        
+        return float(adjusted_p)
     
     def _calculate_confidence_score(self, databases: Dict[str, Dict[str, Any]]) -> float:
         """Calculate confidence score based on database agreement."""

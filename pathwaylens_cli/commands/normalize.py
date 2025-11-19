@@ -44,6 +44,11 @@ def gene_ids(
         # Load configuration
         config = Config()
         
+        # Create output directory if output file is specified
+        if output:
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+        
         # Create API client
         api_client = APIClient(config.api_url, config.api_key)
         

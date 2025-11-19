@@ -3,7 +3,7 @@ Pydantic schemas for visualization module.
 """
 
 from typing import Dict, List, Optional, Union, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 
 
@@ -24,6 +24,10 @@ class PlotType(str, Enum):
     TIME_SERIES = "time_series"
     COMPARISON_PLOT = "comparison_plot"
     CONSENSUS_PLOT = "consensus_plot"
+    UPSET_PLOT = "upset_plot"
+    MULTI_OMICS_HEATMAP = "multi_omics_heatmap"
+    MULTI_OMICS_NETWORK = "multi_omics_network"
+    MULTI_OMICS_SANKEY = "multi_omics_sankey"
 
 
 class VisualizationParameters(BaseModel):
@@ -55,25 +59,29 @@ class VisualizationParameters(BaseModel):
     include_data: bool = Field(default=True, description="Include raw data in exports")
     compress_output: bool = Field(default=False, description="Compress output files")
     
-    @validator('significance_threshold')
+    @field_validator('significance_threshold')
+    @classmethod
     def validate_significance_threshold(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Significance threshold must be between 0 and 1")
         return v
     
-    @validator('fold_change_threshold')
+    @field_validator('fold_change_threshold')
+    @classmethod
     def validate_fold_change_threshold(cls, v):
         if v <= 0:
             raise ValueError("Fold change threshold must be positive")
         return v
     
-    @validator('figure_size')
+    @field_validator('figure_size')
+    @classmethod
     def validate_figure_size(cls, v):
         if len(v) != 2 or v[0] <= 0 or v[1] <= 0:
             raise ValueError("Figure size must be a list of two positive integers")
         return v
     
-    @validator('dpi')
+    @field_validator('dpi')
+    @classmethod
     def validate_dpi(cls, v):
         if v <= 0:
             raise ValueError("DPI must be positive")
@@ -144,13 +152,15 @@ class VisualizationResult(BaseModel):
     warnings: List[str] = Field(default_factory=list, description="Warning messages")
     errors: List[str] = Field(default_factory=list, description="Error messages")
     
-    @validator('plot_quality')
+    @field_validator('plot_quality')
+    @classmethod
     def validate_plot_quality(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Plot quality must be between 0 and 1")
         return v
     
-    @validator('data_coverage')
+    @field_validator('data_coverage')
+    @classmethod
     def validate_data_coverage(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Data coverage must be between 0 and 1")
@@ -187,19 +197,22 @@ class DashboardConfig(BaseModel):
     include_metadata: bool = Field(default=True, description="Include metadata in exports")
     include_data: bool = Field(default=True, description="Include raw data in exports")
     
-    @validator('num_columns')
+    @field_validator('num_columns')
+    @classmethod
     def validate_num_columns(cls, v):
         if v <= 0:
             raise ValueError("Number of columns must be positive")
         return v
     
-    @validator('plot_size')
+    @field_validator('plot_size')
+    @classmethod
     def validate_plot_size(cls, v):
         if len(v) != 2 or v[0] <= 0 or v[1] <= 0:
             raise ValueError("Plot size must be a list of two positive integers")
         return v
     
-    @validator('font_size')
+    @field_validator('font_size')
+    @classmethod
     def validate_font_size(cls, v):
         if v <= 0:
             raise ValueError("Font size must be positive")
@@ -229,13 +242,15 @@ class ExportConfig(BaseModel):
     border: bool = Field(default=True, description="Include border")
     watermark: bool = Field(default=False, description="Include watermark")
     
-    @validator('dpi')
+    @field_validator('dpi')
+    @classmethod
     def validate_dpi(cls, v):
         if v <= 0:
             raise ValueError("DPI must be positive")
         return v
     
-    @validator('quality')
+    @field_validator('quality')
+    @classmethod
     def validate_quality(cls, v):
         if v not in ['low', 'medium', 'high']:
             raise ValueError("Quality must be one of: low, medium, high")
@@ -262,7 +277,8 @@ class VisualizationSummary(BaseModel):
     quality_score: float = Field(..., description="Overall quality score")
     completion_time: Optional[str] = Field(None, description="Completion time")
     
-    @validator('quality_score')
+    @field_validator('quality_score')
+    @classmethod
     def validate_quality_score(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Quality score must be between 0 and 1")
@@ -286,7 +302,8 @@ class VisualizationProgress(BaseModel):
     processing_time: float = Field(default=0.0, description="Processing time so far")
     memory_usage: float = Field(default=0.0, description="Memory usage in MB")
     
-    @validator('progress')
+    @field_validator('progress')
+    @classmethod
     def validate_progress(cls, v):
         if not 0 <= v <= 100:
             raise ValueError("Progress must be between 0 and 100")

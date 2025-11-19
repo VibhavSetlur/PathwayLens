@@ -3,7 +3,7 @@ Pydantic schemas for comparison module.
 """
 
 from typing import Dict, List, Optional, Union, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 from datetime import datetime
 
@@ -45,19 +45,22 @@ class ComparisonParameters(BaseModel):
     include_networks: bool = Field(default=True, description="Include network analysis")
     export_formats: List[str] = Field(default=["json", "csv"], description="Export formats")
     
-    @validator('significance_threshold')
+    @field_validator('significance_threshold')
+    @classmethod
     def validate_significance_threshold(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Significance threshold must be between 0 and 1")
         return v
     
-    @validator('correlation_threshold')
+    @field_validator('correlation_threshold')
+    @classmethod
     def validate_correlation_threshold(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Correlation threshold must be between 0 and 1")
         return v
     
-    @validator('overlap_threshold')
+    @field_validator('overlap_threshold')
+    @classmethod
     def validate_overlap_threshold(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Overlap threshold must be between 0 and 1")
@@ -91,13 +94,15 @@ class OverlapStatistics(BaseModel):
     unique_genes_dataset1: List[str] = Field(..., description="Genes unique to dataset 1")
     unique_genes_dataset2: List[str] = Field(..., description="Genes unique to dataset 2")
     
-    @validator('overlap_percentage')
+    @field_validator('overlap_percentage')
+    @classmethod
     def validate_overlap_percentage(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Overlap percentage must be between 0 and 1")
         return v
     
-    @validator('jaccard_index')
+    @field_validator('jaccard_index')
+    @classmethod
     def validate_jaccard_index(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Jaccard index must be between 0 and 1")
@@ -123,13 +128,15 @@ class CorrelationResult(BaseModel):
     is_significant: bool = Field(..., description="Whether correlation is significant")
     significance_level: float = Field(default=0.05, description="Significance level used")
     
-    @validator('correlation')
+    @field_validator('correlation')
+    @classmethod
     def validate_correlation(cls, v):
         if not -1 <= v <= 1:
             raise ValueError("Correlation must be between -1 and 1")
         return v
     
-    @validator('p_value')
+    @field_validator('p_value')
+    @classmethod
     def validate_p_value(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("P-value must be between 0 and 1")
@@ -157,7 +164,8 @@ class ClusteringResult(BaseModel):
     cluster_sizes: List[int] = Field(..., description="Size of each cluster")
     cluster_datasets: Dict[int, List[str]] = Field(..., description="Datasets in each cluster")
     
-    @validator('silhouette_score')
+    @field_validator('silhouette_score')
+    @classmethod
     def validate_silhouette_score(cls, v):
         if not -1 <= v <= 1:
             raise ValueError("Silhouette score must be between -1 and 1")
@@ -188,13 +196,15 @@ class PathwayConcordance(BaseModel):
     pathway_size: int = Field(..., description="Number of genes in pathway")
     pathway_category: Optional[str] = Field(None, description="Pathway category")
     
-    @validator('concordance_score')
+    @field_validator('concordance_score')
+    @classmethod
     def validate_concordance_score(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Concordance score must be between 0 and 1")
         return v
     
-    @validator('significance_rate')
+    @field_validator('significance_rate')
+    @classmethod
     def validate_significance_rate(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Significance rate must be between 0 and 1")
@@ -243,13 +253,15 @@ class ComparisonResult(BaseModel):
     warnings: List[str] = Field(default_factory=list, description="Warning messages")
     errors: List[str] = Field(default_factory=list, description="Error messages")
     
-    @validator('overall_quality')
+    @field_validator('overall_quality')
+    @classmethod
     def validate_overall_quality(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Overall quality must be between 0 and 1")
         return v
     
-    @validator('reproducibility')
+    @field_validator('reproducibility')
+    @classmethod
     def validate_reproducibility(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Reproducibility must be between 0 and 1")
@@ -278,7 +290,8 @@ class ComparisonSummary(BaseModel):
     quality_score: float = Field(..., description="Overall quality score")
     completion_time: Optional[str] = Field(None, description="Completion time")
     
-    @validator('quality_score')
+    @field_validator('quality_score')
+    @classmethod
     def validate_quality_score(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Quality score must be between 0 and 1")
@@ -302,7 +315,8 @@ class ComparisonProgress(BaseModel):
     processing_time: float = Field(default=0.0, description="Processing time so far")
     memory_usage: float = Field(default=0.0, description="Memory usage in MB")
     
-    @validator('progress')
+    @field_validator('progress')
+    @classmethod
     def validate_progress(cls, v):
         if not 0 <= v <= 100:
             raise ValueError("Progress must be between 0 and 100")

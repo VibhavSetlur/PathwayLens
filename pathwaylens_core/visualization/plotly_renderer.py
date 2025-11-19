@@ -510,3 +510,66 @@ class PlotlyRenderer:
         except Exception as e:
             self.logger.error(f"Failed to export figure: {e}")
             return False
+
+    def create_upset_plot(
+        self,
+        sets: Dict[str, List[str]],
+        title: str = "UpSet Plot",
+        output_file: Optional[str] = None
+    ) -> go.Figure:
+        """
+        Create a simple UpSet-like plot using bar charts for intersections.
+
+        Args:
+            sets: Mapping of dataset name -> list of pathway IDs (or genes)
+            title: Chart title
+            output_file: Optional HTML output path
+
+        Returns:
+            Plotly figure
+        """
+        try:
+            # Build intersection sizes for all non-empty combinations up to a reasonable cap
+            from itertools import combinations
+
+            set_items = {name: set(items) for name, items in sets.items()}
+            names = list(set_items.keys())
+            combos = []
+            for r in range(1, min(len(names), 5) + 1):
+                for combo in combinations(names, r):
+                    inter = set.intersection(*(set_items[n] for n in combo))
+                    if len(inter) > 0:
+                        combos.append((combo, len(inter)))
+
+            if not combos:
+                fig = go.Figure()
+                fig.add_annotation(text="No intersections", xref="paper", yref="paper", x=0.5, y=0.5)
+                return fig
+
+            # Sort by size desc
+            combos.sort(key=lambda x: x[1], reverse=True)
+            labels = [" ∩ ".join(c) for c, _ in combos]
+            sizes = [s for _, s in combos]
+
+            fig = go.Figure(data=[go.Bar(x=list(range(len(labels))), y=sizes)])
+            fig.update_layout(
+                title=title,
+                xaxis=dict(
+                    tickmode="array",
+                    tickvals=list(range(len(labels))),
+                    ticktext=labels,
+                    tickangle=45
+                ),
+                yaxis_title="Intersection size",
+                width=max(800, 20 * len(labels)),
+                height=500,
+            )
+
+            if output_file:
+                fig.write_html(output_file)
+                self.logger.info(f"UpSet plot saved to {output_file}")
+
+            return fig
+        except Exception as e:
+            self.logger.error(f"Failed to create UpSet plot: {e}")
+            return go.Figure()

@@ -54,19 +54,27 @@ class ComparisonEngine:
             # Extract comparison data
             comparison_data = self._extract_comparison_data(analysis_results, parameters)
             
+            # Initialize default results
+            results = {
+                'overlap_statistics': {},
+                'correlation_results': {},
+                'clustering_results': None,
+                'pathway_concordance': []
+            }
+
             # Perform comparison based on type
             if parameters.comparison_type == ComparisonType.GENE_OVERLAP:
-                results = await self._perform_gene_overlap_analysis(comparison_data, parameters)
+                results.update(await self._perform_gene_overlap_analysis(comparison_data, parameters))
             elif parameters.comparison_type == ComparisonType.PATHWAY_OVERLAP:
-                results = await self._perform_pathway_overlap_analysis(comparison_data, parameters)
+                results.update(await self._perform_pathway_overlap_analysis(comparison_data, parameters))
             elif parameters.comparison_type == ComparisonType.PATHWAY_CONCORDANCE:
-                results = await self._perform_pathway_concordance_analysis(comparison_data, parameters)
+                results.update(await self._perform_pathway_concordance_analysis(comparison_data, parameters))
             elif parameters.comparison_type == ComparisonType.ENRICHMENT_CORRELATION:
-                results = await self._perform_enrichment_correlation_analysis(comparison_data, parameters)
+                results.update(await self._perform_enrichment_correlation_analysis(comparison_data, parameters))
             elif parameters.comparison_type == ComparisonType.DATASET_CLUSTERING:
-                results = await self._perform_dataset_clustering_analysis(comparison_data, parameters)
+                results.update(await self._perform_dataset_clustering_analysis(comparison_data, parameters))
             elif parameters.comparison_type == ComparisonType.COMPREHENSIVE:
-                results = await self._perform_comprehensive_analysis(comparison_data, parameters)
+                results.update(await self._perform_comprehensive_analysis(comparison_data, parameters))
             else:
                 raise ValueError(f"Unsupported comparison type: {parameters.comparison_type}")
             
@@ -80,8 +88,6 @@ class ComparisonEngine:
                 parameters=parameters,
                 input_files=[result.input_file for result in analysis_results],
                 num_datasets=len(analysis_results),
-                total_genes=summary_stats['total_genes'],
-                unique_genes=summary_stats['unique_genes'],
                 **results,
                 **summary_stats
             )
@@ -173,6 +179,27 @@ class ComparisonEngine:
                 overlap_statistics[key] = overlap_stats
         
         return {'overlap_statistics': overlap_statistics}
+
+    def build_upset_sets_from_genes(
+        self,
+        comparison_data: Dict[str, Any]
+    ) -> Dict[str, List[str]]:
+        """Build per-dataset gene sets for UpSet plotting."""
+        return {name: list(info['genes']) for name, info in comparison_data['datasets'].items()}
+
+    def build_upset_sets_from_pathways(
+        self,
+        comparison_data: Dict[str, Any]
+    ) -> Dict[str, List[str]]:
+        """Build per-dataset pathway sets for UpSet plotting."""
+        sets: Dict[str, List[str]] = {}
+        for name, info in comparison_data['datasets'].items():
+            pathways = set()
+            for db_result in info['database_results'].values():
+                for pathway in db_result.pathways:
+                    pathways.add(f"{db_result.database.value}_{pathway.pathway_id}")
+            sets[name] = list(pathways)
+        return sets
     
     def _calculate_gene_overlap(
         self, 
@@ -473,14 +500,18 @@ class ComparisonEngine:
         # Calculate confidence interval
         n = len(common_pathways)
         df = n - 2
-        se = np.sqrt((1 - correlation**2) / df)
-        t_critical = stats.t.ppf(0.975, df)
-        margin_error = t_critical * se
         
-        confidence_interval = [
-            correlation - margin_error,
-            correlation + margin_error
-        ]
+        if df > 0:
+            se = np.sqrt((1 - correlation**2) / df)
+            t_critical = stats.t.ppf(0.975, df)
+            margin_error = t_critical * se
+            
+            confidence_interval = [
+                correlation - margin_error,
+                correlation + margin_error
+            ]
+        else:
+            confidence_interval = [correlation, correlation]
         
         is_significant = p_value <= parameters.significance_threshold
         

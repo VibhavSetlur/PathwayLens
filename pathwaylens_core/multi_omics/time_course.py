@@ -157,7 +157,118 @@ class TimeCourseAnalyzer:
                 significant_genes.append(gene_id)
         
         return significant_genes
-    
+
+    async def calculate_slopes(
+        self,
+        time_course_data: pd.DataFrame,
+        time_points: List[float]
+    ) -> Dict[str, float]:
+        """Calculate expression slopes for each gene over time."""
+        gene_columns = ['gene_id', 'gene', 'gene_symbol', 'symbol']
+        gene_col = None
+        
+        for col in gene_columns:
+            if col in time_course_data.columns:
+                gene_col = col
+                break
+        
+        if gene_col is None:
+            return {}
+        
+        slopes = {}
+        for idx, row in time_course_data.iterrows():
+            gene_id = row[gene_col]
+            expression_values = row.drop(gene_col).values
+            
+            if len(expression_values) >= 2:
+                # Calculate slope using linear regression
+                slope = np.polyfit(time_points[:len(expression_values)], expression_values, 1)[0]
+                slopes[gene_id] = slope
+        
+        return slopes
+
+    async def build_dynamic_network(
+        self,
+        time_course_data: pd.DataFrame,
+        time_points: List[float],
+        threshold: float = 0.5
+    ) -> Dict[str, Any]:
+        """Build dynamic network from time course data."""
+        gene_columns = ['gene_id', 'gene', 'gene_symbol', 'symbol']
+        gene_col = None
+        
+        for col in gene_columns:
+            if col in time_course_data.columns:
+                gene_col = col
+                break
+        
+        if gene_col is None:
+            return {"nodes": [], "edges": []}
+        
+        # Calculate correlations between genes over time
+        expression_data = time_course_data.drop(columns=[gene_col])
+        correlation_matrix = expression_data.corr()
+        
+        # Build network
+        nodes = []
+        edges = []
+        
+        for idx, row in time_course_data.iterrows():
+            gene_id = row[gene_col]
+            nodes.append({
+                "id": gene_id,
+                "label": gene_id,
+                "slope": await self._get_gene_slope(gene_id, time_course_data, time_points)
+            })
+        
+        # Add edges based on correlation
+        for i, gene1 in enumerate(time_course_data[gene_col]):
+            for j, gene2 in enumerate(time_course_data[gene_col]):
+                if i < j:  # Avoid duplicates
+                    corr = correlation_matrix.iloc[i, j]
+                    if abs(corr) > threshold:
+                        edges.append({
+                            "source": gene1,
+                            "target": gene2,
+                            "weight": abs(corr),
+                            "correlation": corr
+                        })
+        
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "time_points": time_points,
+            "threshold": threshold
+        }
+
+    async def _get_gene_slope(
+        self,
+        gene_id: str,
+        time_course_data: pd.DataFrame,
+        time_points: List[float]
+    ) -> float:
+        """Get slope for a specific gene."""
+        gene_columns = ['gene_id', 'gene', 'gene_symbol', 'symbol']
+        gene_col = None
+        
+        for col in gene_columns:
+            if col in time_course_data.columns:
+                gene_col = col
+                break
+        
+        if gene_col is None:
+            return 0.0
+        
+        gene_row = time_course_data[time_course_data[gene_col] == gene_id]
+        if gene_row.empty:
+            return 0.0
+        
+        expression_values = gene_row.iloc[0].drop(gene_col).values
+        if len(expression_values) >= 2:
+            return np.polyfit(time_points[:len(expression_values)], expression_values, 1)[0]
+        
+        return 0.0
+
     async def _is_significant_time_course(
         self, 
         expression_values: np.ndarray, 

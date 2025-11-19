@@ -9,7 +9,7 @@ import json
 import csv
 import gzip
 import zipfile
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Union, Tuple, Iterator
 from pathlib import Path
 import hashlib
 import mimetypes
@@ -90,18 +90,22 @@ class FileUtils:
         self,
         file_path: str,
         format: Optional[str] = None,
+        streaming: bool = False,
+        chunksize: Optional[int] = None,
         **kwargs
-    ) -> Union[pd.DataFrame, Dict[str, Any], List[Dict[str, Any]]]:
+    ) -> Union[pd.DataFrame, Dict[str, Any], List[Dict[str, Any]], 'Iterator[pd.DataFrame]']:
         """
         Read file and return appropriate data structure.
         
         Args:
             file_path: Path to the file
             format: File format (auto-detected if None)
+            streaming: If True, return iterator for chunked reading
+            chunksize: Size of chunks when streaming (default: 10000)
             **kwargs: Additional arguments for pandas readers
             
         Returns:
-            DataFrame, dictionary, or list depending on file type
+            DataFrame, dictionary, list, or iterator depending on file type and streaming flag
         """
         file_path = Path(file_path)
         
@@ -116,11 +120,94 @@ class FileUtils:
         
         try:
             if format == 'csv':
-                return pd.read_csv(file_path, **kwargs)
+                # Improved CSV reading with better error handling and memory efficiency
+                # Use chunking for large files
+                file_size_mb = file_path.stat().st_size / (1024 * 1024)
+                use_chunks = file_size_mb > 100  # Use chunks for files > 100MB
+                
+                csv_kwargs = {
+                    'low_memory': True if use_chunks else False,  # Use low_memory for large files
+                    'on_bad_lines': 'skip',
+                    'encoding': kwargs.pop('encoding', 'utf-8'),
+                    **kwargs
+                }
+                
+                # For streaming mode, return iterator
+                if streaming:
+                    chunk_size = chunksize or kwargs.pop('chunksize', 10000)
+                    return pd.read_csv(file_path, chunksize=chunk_size, **csv_kwargs)
+                
+                # For large files, read in chunks and concatenate (memory-efficient)
+                if use_chunks and 'chunksize' not in kwargs:
+                    chunks = []
+                    chunk_size = kwargs.pop('chunksize', 10000)
+                    for chunk in pd.read_csv(file_path, chunksize=chunk_size, **csv_kwargs):
+                        chunks.append(chunk)
+                    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+                
+                try:
+                    return pd.read_csv(file_path, **csv_kwargs)
+                except UnicodeDecodeError:
+                    # Try with different encodings
+                    for encoding in ['latin-1', 'iso-8859-1', 'cp1252']:
+                        try:
+                            csv_kwargs['encoding'] = encoding
+                            return pd.read_csv(file_path, **csv_kwargs)
+                        except (UnicodeDecodeError, Exception):
+                            continue
+                    raise ValueError(f"Could not read CSV file with supported encodings: {file_path}")
             elif format == 'tsv':
-                return pd.read_csv(file_path, sep='\t', **kwargs)
+                # Improved TSV reading with better delimiter detection
+                tsv_kwargs = {
+                    'sep': '\t',
+                    'low_memory': False,
+                    'on_bad_lines': 'skip',
+                    'encoding': kwargs.pop('encoding', 'utf-8'),
+                    **kwargs
+                }
+                try:
+                    return pd.read_csv(file_path, **tsv_kwargs)
+                except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                    # Try to auto-detect delimiter
+                    with open(file_path, 'r', encoding=tsv_kwargs['encoding']) as f:
+                        sample = f.read(1024)
+                    delimiters = ['\t', '|', ';', ',']
+                    for delim in delimiters:
+                        if delim in sample:
+                            tsv_kwargs['sep'] = delim
+                            try:
+                                return pd.read_csv(file_path, **tsv_kwargs)
+                            except Exception:
+                                continue
+                    raise
+                except UnicodeDecodeError:
+                    # Try with different encodings
+                    for encoding in ['latin-1', 'iso-8859-1', 'cp1252']:
+                        try:
+                            tsv_kwargs['encoding'] = encoding
+                            return pd.read_csv(file_path, **tsv_kwargs)
+                        except (UnicodeDecodeError, Exception):
+                            continue
+                    raise ValueError(f"Could not read TSV file with supported encodings: {file_path}")
             elif format == 'excel':
-                return pd.read_excel(file_path, **kwargs)
+                # Improved Excel reading with sheet name support and better error handling
+                excel_kwargs = {
+                    'engine': 'openpyxl' if str(file_path).endswith('.xlsx') else None,
+                    **kwargs
+                }
+                try:
+                    return pd.read_excel(file_path, **excel_kwargs)
+                except ImportError:
+                    # Fallback if openpyxl not available
+                    excel_kwargs.pop('engine', None)
+                    return pd.read_excel(file_path, **excel_kwargs)
+                except Exception as e:
+                    # Try reading first sheet explicitly
+                    try:
+                        excel_kwargs['sheet_name'] = 0
+                        return pd.read_excel(file_path, **excel_kwargs)
+                    except Exception:
+                        raise ValueError(f"Could not read Excel file: {file_path}. Error: {e}")
             elif format == 'json':
                 with open(file_path, 'r') as f:
                     return json.load(f)

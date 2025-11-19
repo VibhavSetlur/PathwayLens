@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Any, Union
 from loguru import logger
 
 from .schemas import DatabaseResult, PathwayResult, DatabaseType
+from .gsea_engine import GSEAEngine
 from ..data import DatabaseManager
 
 
@@ -24,6 +25,7 @@ class MultiOmicsEngine:
         """
         self.logger = logger.bind(module="multi_omics_engine")
         self.database_manager = database_manager or DatabaseManager()
+        self.gsea_engine = GSEAEngine(database_manager=self.database_manager)
     
     async def analyze(
         self,
@@ -86,14 +88,20 @@ class MultiOmicsEngine:
             )
             
             # Perform multi-omics pathway analysis
-            pathway_scores = await self._calculate_multi_omics_scores(
-                integrated_data, filtered_pathways, integration_method
-            )
-            
-            # Perform statistical testing
-            pathway_results = await self._perform_statistical_testing(
-                pathway_scores, significance_threshold, correction_method
-            )
+            # Use multiGSEA if integration method supports it
+            if integration_method in ["multigsea", "multi_gsea"]:
+                pathway_results = await self._perform_multigsea_analysis(
+                    omics_data, filtered_pathways, significance_threshold, correction_method
+                )
+            else:
+                pathway_scores = await self._calculate_multi_omics_scores(
+                    integrated_data, filtered_pathways, integration_method
+                )
+                
+                # Perform statistical testing
+                pathway_results = await self._perform_statistical_testing(
+                    pathway_scores, significance_threshold, correction_method
+                )
             
             # Calculate coverage
             coverage = self._calculate_coverage(omics_data, filtered_pathways)
@@ -500,6 +508,178 @@ class MultiOmicsEngine:
         
         return pathway_results
     
+    async def _perform_multigsea_analysis(
+        self,
+        omics_data: Dict[str, pd.DataFrame],
+        pathway_definitions: Dict[str, List[str]],
+        significance_threshold: float,
+        correction_method: str
+    ) -> List[PathwayResult]:
+        """
+        Perform multiGSEA analysis across multiple omics datasets.
+        
+        MultiGSEA extends GSEA to multiple omics layers by:
+        1. Running GSEA on each omics dataset separately
+        2. Combining results using meta-analysis methods
+        3. Identifying pathways consistently enriched across omics layers
+        """
+        self.logger.info("Starting multiGSEA analysis across omics datasets")
+        
+        omics_gsea_results: Dict[str, Dict[str, PathwayResult]] = {}
+        
+        # Run GSEA on each omics dataset
+        for omics_type, data in omics_data.items():
+            self.logger.info(f"Running GSEA on {omics_type} dataset")
+            
+            if data.empty or len(data.columns) == 0:
+                continue
+            
+            # Prepare gene ranking
+            if len(data.columns) == 1:
+                ranking_values = data.iloc[:, 0].values
+            else:
+                ranking_values = data.mean(axis=1).values
+            
+            gene_ranking = {
+                str(gene): float(score) 
+                for gene, score in zip(data.index, ranking_values)
+            }
+            
+            # Run GSEA for each pathway
+            pathway_results = {}
+            for pathway_id, pathway_genes in pathway_definitions.items():
+                es_result = self.gsea_engine._calculate_enrichment_score(
+                    gene_ranking, pathway_genes
+                )
+                
+                if es_result is None:
+                    continue
+                
+                enrichment_score, normalized_es, p_value = es_result
+                overlap_genes = list(set(gene_ranking.keys()) & set(pathway_genes))
+                
+                pathway_result = PathwayResult(
+                    pathway_id=pathway_id,
+                    pathway_name=pathway_id,
+                    database=DatabaseType.KEGG,
+                    p_value=p_value,
+                    adjusted_p_value=p_value,
+                    enrichment_score=enrichment_score,
+                    normalized_enrichment_score=normalized_es,
+                    overlap_count=len(overlap_genes),
+                    pathway_count=len(pathway_genes),
+                    input_count=len(gene_ranking),
+                    overlapping_genes=overlap_genes,
+                    pathway_genes=pathway_genes,
+                    analysis_method=f"GSEA_{omics_type}"
+                )
+                
+                pathway_results[pathway_id] = pathway_result
+            
+            omics_gsea_results[omics_type] = pathway_results
+        
+        # Combine results
+        combined_results = self._combine_multigsea_results(
+            omics_gsea_results, correction_method
+        )
+        
+        return combined_results
+    
+    def _combine_multigsea_results(
+        self,
+        omics_gsea_results: Dict[str, Dict[str, PathwayResult]],
+        correction_method: str,
+        consensus_method: str = "stouffer"
+    ) -> List[PathwayResult]:
+        """
+        Combine GSEA results across omics datasets using meta-analysis.
+        
+        Args:
+            omics_gsea_results: Dictionary mapping omics types to pathway results
+            correction_method: Multiple testing correction method
+            consensus_method: Consensus method for combining p-values (stouffer, fisher, wilkinson, pearson)
+            
+        Returns:
+            Combined pathway results
+        """
+        from .consensus_engine import ConsensusEngine
+        from .schemas import ConsensusMethod
+        
+        all_pathway_ids = set()
+        for results in omics_gsea_results.values():
+            all_pathway_ids.update(results.keys())
+        
+        combined_results = []
+        consensus_engine = ConsensusEngine()
+        
+        # Map consensus method string to enum
+        method_map = {
+            "stouffer": ConsensusMethod.STOUFFER,
+            "fisher": ConsensusMethod.FISHER,
+            "wilkinson": ConsensusMethod.WILKINSON,
+            "pearson": ConsensusMethod.PEARSON,
+            "geometric_mean": ConsensusMethod.GEOMETRIC_MEAN
+        }
+        consensus_method_enum = method_map.get(consensus_method.lower(), ConsensusMethod.STOUFFER)
+        
+        for pathway_id in all_pathway_ids:
+            p_values = []
+            enrichment_scores = []
+            pathway_results_list = []
+            
+            for omics_type, results in omics_gsea_results.items():
+                if pathway_id in results:
+                    result = results[pathway_id]
+                    p_values.append(result.p_value)
+                    enrichment_scores.append(result.enrichment_score or 0.0)
+                    pathway_results_list.append(result)
+            
+            if not p_values:
+                continue
+            
+            # Combine p-values using specified consensus method
+            combined_p_value = consensus_engine._combine_p_values(p_values, consensus_method_enum)
+            
+            # Calculate weighted enrichment score (weight by inverse p-value)
+            weights = [1.0 / (p + 1e-10) for p in p_values]
+            total_weight = sum(weights)
+            weighted_enrichment_score = sum(
+                score * weight for score, weight in zip(enrichment_scores, weights)
+            ) / total_weight if total_weight > 0 else max(enrichment_scores) if enrichment_scores else 0.0
+            
+            first_result = pathway_results_list[0]
+            
+            combined_result = PathwayResult(
+                pathway_id=pathway_id,
+                pathway_name=first_result.pathway_name,
+                database=first_result.database,
+                p_value=combined_p_value,
+                adjusted_p_value=combined_p_value,
+                enrichment_score=weighted_enrichment_score,
+                normalized_enrichment_score=weighted_enrichment_score,
+                overlap_count=sum(r.overlap_count for r in pathway_results_list) // len(pathway_results_list),
+                pathway_count=first_result.pathway_count,
+                input_count=sum(r.input_count for r in pathway_results_list) // len(pathway_results_list),
+                overlapping_genes=list(set().union(*[set(r.overlapping_genes) for r in pathway_results_list])),
+                pathway_genes=first_result.pathway_genes,
+                analysis_method=f"multiGSEA_{consensus_method}"
+            )
+            
+            combined_results.append(combined_result)
+        
+        # Apply multiple testing correction
+        if combined_results:
+            p_values = [r.p_value for r in combined_results]
+            from .schemas import CorrectionMethod
+            correction = CorrectionMethod.FDR_BH if correction_method == "fdr_bh" else CorrectionMethod.BONFERRONI
+            corrected_p_values = self.gsea_engine._apply_correction(p_values, correction)
+            
+            for i, result in enumerate(combined_results):
+                result.adjusted_p_value = corrected_p_values[i]
+        
+        combined_results.sort(key=lambda x: x.adjusted_p_value)
+        return combined_results
+    
     def _calculate_coverage(
         self, 
         omics_data: Dict[str, pd.DataFrame], 
@@ -520,3 +700,151 @@ class MultiOmicsEngine:
             return 0.0
         
         return len(covered_genes) / len(all_pathway_genes)
+    
+    async def map_pathways_cross_omics(
+        self,
+        omics_data: Dict[str, pd.DataFrame],
+        pathway_definitions: Dict[str, List[str]],
+        species: str
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Map pathways across different omics types.
+        
+        This function identifies pathways that are active across multiple omics layers
+        and creates a mapping showing which omics types contribute to each pathway.
+        
+        Args:
+            omics_data: Dictionary mapping omics types to dataframes
+            pathway_definitions: Dictionary mapping pathway IDs to gene lists
+            species: Species for the analysis
+            
+        Returns:
+            Dictionary mapping pathway IDs to cross-omics mapping information
+        """
+        self.logger.info("Mapping pathways across omics types")
+        
+        cross_omics_mapping = {}
+        
+        for pathway_id, pathway_genes in pathway_definitions.items():
+            pathway_mapping = {
+                'pathway_id': pathway_id,
+                'pathway_genes': pathway_genes,
+                'omics_coverage': {},
+                'active_omics': [],
+                'coverage_score': 0.0,
+                'consensus_score': 0.0
+            }
+            
+            # Check coverage for each omics type
+            for omics_type, data in omics_data.items():
+                if data.empty:
+                    continue
+                
+                # Find overlapping features
+                if omics_type in ['genomics', 'transcriptomics', 'epigenomics']:
+                    # Direct gene matching
+                    overlapping = set(data.index) & set(pathway_genes)
+                elif omics_type in ['proteomics', 'phosphoproteomics']:
+                    # Need to map proteins to genes
+                    # For now, use index matching (assuming proteins are in index)
+                    overlapping = set(data.index) & set(pathway_genes)
+                elif omics_type == 'metabolomics':
+                    # Metabolites need special mapping via pathways
+                    # This is simplified - in practice would use metabolite-pathway databases
+                    overlapping = set()  # Placeholder
+                else:
+                    overlapping = set()
+                
+                coverage = len(overlapping) / len(pathway_genes) if pathway_genes else 0.0
+                
+                pathway_mapping['omics_coverage'][omics_type] = {
+                    'overlapping_features': list(overlapping),
+                    'coverage': coverage,
+                    'feature_count': len(overlapping)
+                }
+                
+                # Consider pathway active in this omics type if coverage > threshold
+                if coverage > 0.1:  # 10% threshold
+                    pathway_mapping['active_omics'].append(omics_type)
+            
+            # Calculate overall coverage score (average across omics types)
+            coverage_scores = [
+                info['coverage'] 
+                for info in pathway_mapping['omics_coverage'].values()
+            ]
+            pathway_mapping['coverage_score'] = np.mean(coverage_scores) if coverage_scores else 0.0
+            
+            # Calculate consensus score (higher if pathway is active in multiple omics)
+            pathway_mapping['consensus_score'] = len(pathway_mapping['active_omics']) / len(omics_data) if omics_data else 0.0
+            
+            cross_omics_mapping[pathway_id] = pathway_mapping
+        
+        self.logger.info(f"Mapped {len(cross_omics_mapping)} pathways across omics types")
+        return cross_omics_mapping
+    
+    async def get_cross_omics_pathway_network(
+        self,
+        cross_omics_mapping: Dict[str, Dict[str, Any]],
+        min_consensus: float = 0.3
+    ) -> Dict[str, Any]:
+        """
+        Build a network of pathways based on cross-omics activity.
+        
+        Args:
+            cross_omics_mapping: Cross-omics pathway mapping from map_pathways_cross_omics
+            min_consensus: Minimum consensus score to include pathway
+            
+        Returns:
+            Network structure with pathways and their cross-omics relationships
+        """
+        self.logger.info("Building cross-omics pathway network")
+        
+        # Filter pathways by consensus score
+        filtered_pathways = {
+            pathway_id: mapping 
+            for pathway_id, mapping in cross_omics_mapping.items()
+            if mapping['consensus_score'] >= min_consensus
+        }
+        
+        # Build network edges based on shared omics activity
+        network = {
+            'nodes': [],
+            'edges': [],
+            'node_attributes': {},
+            'edge_attributes': {}
+        }
+        
+        pathway_ids = list(filtered_pathways.keys())
+        
+        for pathway_id in pathway_ids:
+            mapping = filtered_pathways[pathway_id]
+            
+            # Add node
+            network['nodes'].append(pathway_id)
+            network['node_attributes'][pathway_id] = {
+                'active_omics': mapping['active_omics'],
+                'coverage_score': mapping['coverage_score'],
+                'consensus_score': mapping['consensus_score'],
+                'omics_count': len(mapping['active_omics'])
+            }
+            
+            # Find edges (pathways that share omics activity)
+            for other_pathway_id in pathway_ids:
+                if pathway_id >= other_pathway_id:  # Avoid duplicate edges
+                    continue
+                
+                other_mapping = filtered_pathways[other_pathway_id]
+                
+                # Calculate edge weight based on shared omics
+                shared_omics = set(mapping['active_omics']) & set(other_mapping['active_omics'])
+                if shared_omics:
+                    edge_weight = len(shared_omics) / max(len(mapping['active_omics']), len(other_mapping['active_omics']), 1)
+                    
+                    network['edges'].append((pathway_id, other_pathway_id))
+                    network['edge_attributes'][(pathway_id, other_pathway_id)] = {
+                        'weight': edge_weight,
+                        'shared_omics': list(shared_omics)
+                    }
+        
+        self.logger.info(f"Built network with {len(network['nodes'])} nodes and {len(network['edges'])} edges")
+        return network

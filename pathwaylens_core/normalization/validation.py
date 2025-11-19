@@ -27,8 +27,8 @@ class InputValidator:
             IDType.REFSEQ: r'^[NX][MR]_\d+$',
             IDType.MGI: r'^MGI:\d+$',
             IDType.FLYBASE: r'^FBgn\d{7}$',
-            IDType.WORMBASE: r'^WBGene\d{8}$',
-            IDType.SGD: r'^Y[A-Z]{2}\d{3}[CW]?$'
+            # IDType.WORMBASE: r'^WBGene\d{8}$',  # Not in IDType enum
+            # IDType.SGD: r'^Y[A-Z]{2}\d{3}[CW]?$'  # Not in IDType enum
         }
         
         # Species-specific ID patterns
@@ -63,9 +63,16 @@ class InputValidator:
         file_path = Path(file_path)
         
         if not file_path.exists():
+            suggestions = [
+                "Check if the file path is correct",
+                "Verify the file exists in the specified location",
+                "Check for typos in the file path",
+                "Ensure you have read permissions for the file"
+            ]
             return ValidationResult(
                 is_valid=False,
-                errors=[f"File not found: {file_path}"]
+                errors=[f"File not found: {file_path}"],
+                suggestions=suggestions
             )
         
         # Check file size
@@ -86,9 +93,26 @@ class InputValidator:
         try:
             df = self._read_file(file_path)
         except Exception as e:
+            error_msg = str(e)
+            suggestions = [
+                "Check if the file format is supported (CSV, TSV, Excel, JSON, Parquet, Feather)",
+                "Verify the file is not corrupted",
+                "Check file encoding (try UTF-8)",
+                "Ensure the file is properly formatted (check for missing delimiters, quotes, etc.)"
+            ]
+            
+            # Add format-specific suggestions
+            if "sep" in error_msg.lower() or "delimiter" in error_msg.lower():
+                suggestions.append("Try specifying a different delimiter (comma, tab, semicolon)")
+            elif "encoding" in error_msg.lower():
+                suggestions.append("Try reading with different encoding (utf-8, latin-1, cp1252)")
+            elif "excel" in error_msg.lower() or "xlsx" in error_msg.lower():
+                suggestions.append("Ensure openpyxl is installed: pip install openpyxl")
+            
             return ValidationResult(
                 is_valid=False,
-                errors=[f"Could not read file: {e}"]
+                errors=[f"Could not read file: {error_msg}"],
+                suggestions=suggestions
             )
         
         # Validate DataFrame
@@ -254,6 +278,12 @@ class InputValidator:
         
         if not id_column:
             errors.append("Could not find column with gene IDs")
+            suggestions.append(
+                "Specify the column name containing gene IDs using the 'gene_id_column' parameter"
+            )
+            suggestions.append(
+                f"Detected ID type: {id_type.value}. Ensure your gene IDs match this format."
+            )
             return {"errors": errors, "warnings": warnings, "suggestions": suggestions}
         
         # Validate IDs

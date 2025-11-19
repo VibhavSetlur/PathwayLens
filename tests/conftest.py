@@ -12,7 +12,7 @@ from pathwaylens_core.data.database_manager import DatabaseManager
 from pathwaylens_core.analysis.engine import AnalysisEngine
 from pathwaylens_core.comparison.engine import ComparisonEngine
 from pathwaylens_core.visualization.engine import VisualizationEngine
-from pathwaylens_core.normalization.normalizer import NormalizationEngine
+from pathwaylens_core.normalization import Normalizer
 
 
 @pytest.fixture(scope="session")
@@ -55,9 +55,9 @@ def visualization_engine() -> VisualizationEngine:
 
 
 @pytest.fixture
-def normalization_engine() -> NormalizationEngine:
+def normalization_engine() -> Normalizer:
     """Create a normalization engine for testing."""
-    return NormalizationEngine()
+    return Normalizer()
 
 
 @pytest.fixture

@@ -24,7 +24,9 @@ from pathwaylens_cli.commands import (
     compare,
     visualize,
     config,
-    info
+    info,
+    workflow,
+    plugin,
 )
 
 # Initialize the main CLI app
@@ -43,19 +45,28 @@ app.add_typer(compare.app, name="compare", help="Compare multiple datasets")
 app.add_typer(visualize.app, name="visualize", help="Generate visualizations")
 app.add_typer(config.app, name="config", help="Manage configuration")
 app.add_typer(info.app, name="info", help="Display system information")
+app.add_typer(workflow.app, name="workflow", help="Run and validate workflows")
+app.add_typer(plugin.app, name="plugin", help="Manage and execute plugins")
+
+# Add command aliases for convenience
+app.add_typer(normalize.app, name="norm", help="Alias for normalize")
+app.add_typer(analyze.app, name="ana", help="Alias for analyze")
+app.add_typer(visualize.app, name="viz", help="Alias for visualize")
+app.add_typer(workflow.app, name="wf", help="Alias for workflow")
 
 # Global options
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
-    version: Optional[bool] = typer.Option(
-        None, 
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, 
         "--version", 
-        "-v", 
         help="Show version and exit"
     ),
     verbose: bool = typer.Option(
         False, 
         "--verbose", 
+        "-v",
         help="Enable verbose output"
     ),
     config_file: Optional[Path] = typer.Option(
@@ -77,15 +88,14 @@ def main(
         pathwaylens analyze deseq2_results.csv --databases kegg,reactome
         pathwaylens compare dataset1.csv dataset2.csv --species human
     """
+    # Store config file in context for commands to use
+    if config_file:
+        ctx.meta["config_file"] = str(config_file)
+    
     if version:
         console = Console()
-        console.print(Panel.fit(
-            "[bold blue]PathwayLens v2.0.0[/bold blue]\n"
-            "Next-generation computational biology platform\n"
-            "Built with ❤️ for the bioinformatics community",
-            title="🧬 PathwayLens"
-        ))
-        raise typer.Exit()
+        console.print("PathwayLens v2.0.0")
+        raise typer.Exit(code=0)
 
 if __name__ == "__main__":
     app()

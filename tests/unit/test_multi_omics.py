@@ -11,7 +11,7 @@ from pathwaylens_core.multi_omics.proteomics import ProteomicsAnalyzer
 from pathwaylens_core.multi_omics.metabolomics import MetabolomicsAnalyzer
 from pathwaylens_core.multi_omics.phosphoproteomics import PhosphoproteomicsAnalyzer
 from pathwaylens_core.multi_omics.epigenomics import EpigenomicsAnalyzer
-from pathwaylens_core.multi_omics.joint_analysis import JointMultiOmicsAnalyzer
+from pathwaylens_core.multi_omics.joint_analysis import JointAnalyzer
 from pathwaylens_core.multi_omics.time_course import TimeCourseAnalyzer
 
 
@@ -479,13 +479,13 @@ class TestEpigenomicsAnalyzer:
         assert epigenomics_analyzer._validate_data(pd.DataFrame()) is False
 
 
-class TestJointMultiOmicsAnalyzer:
-    """Test cases for the JointMultiOmicsAnalyzer class."""
+class TestJointAnalyzer:
+    """Test cases for the JointAnalyzer class."""
 
     @pytest.fixture
     def joint_analyzer(self):
-        """Create a JointMultiOmicsAnalyzer instance for testing."""
-        return JointMultiOmicsAnalyzer()
+        """Create a JointAnalyzer instance for testing."""
+        return JointAnalyzer()
 
     @pytest.fixture
     def sample_omics_data_results(self):

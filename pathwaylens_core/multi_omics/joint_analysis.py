@@ -88,29 +88,96 @@ class JointAnalyzer:
             raise
     
     async def _validate_omics_data(self, omics_data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-        """Validate multi-omics data."""
+        """
+        Validate multi-omics data with comprehensive checks.
+        
+        Args:
+            omics_data: Dictionary mapping omics types to DataFrames
+            
+        Returns:
+            Dictionary with validation status, errors, and warnings
+        """
         validation_result = {
             'valid': True,
             'errors': [],
-            'warnings': []
+            'warnings': [],
+            'suggestions': []
         }
         
         if not omics_data:
             validation_result['valid'] = False
-            validation_result['errors'].append("No omics data provided")
+            validation_result['errors'].append(
+                "No omics data provided. Please provide at least one omics dataset."
+            )
             return validation_result
         
         # Check for valid omics types
         for omics_type in omics_data.keys():
             if omics_type not in self.omics_types:
-                validation_result['warnings'].append(f"Unknown omics type: {omics_type}")
+                validation_result['warnings'].append(
+                    f"Unknown omics type: {omics_type}. "
+                    f"Supported types: {', '.join(self.omics_types.keys())}"
+                )
         
         # Check for empty datasets
         for omics_type, data in omics_data.items():
             if data.empty:
-                validation_result['warnings'].append(f"Empty dataset for {omics_type}")
+                validation_result['warnings'].append(
+                    f"Empty dataset for {omics_type}. This omics type will be skipped in analysis."
+                )
+            else:
+                # Check for required columns based on omics type
+                missing_cols = self._check_required_columns(omics_type, data)
+                if missing_cols:
+                    validation_result['warnings'].append(
+                        f"{omics_type}: Missing recommended columns: {', '.join(missing_cols)}. "
+                        f"Analysis may be limited."
+                    )
+        
+        # Check for data quality issues
+        for omics_type, data in omics_data.items():
+            if not data.empty:
+                quality_issues = self._check_data_quality(omics_type, data)
+                if quality_issues:
+                    validation_result['warnings'].extend(quality_issues)
         
         return validation_result
+    
+    def _check_required_columns(self, omics_type: str, data: pd.DataFrame) -> List[str]:
+        """Check for required columns based on omics type."""
+        required_columns = {
+            'genomics': ['gene_id', 'gene', 'gene_symbol', 'symbol'],
+            'transcriptomics': ['gene_id', 'gene', 'gene_symbol', 'symbol', 'ensembl_id'],
+            'proteomics': ['protein_id', 'uniprot_id', 'accession'],
+            'metabolomics': ['metabolite_id', 'hmdb_id', 'kegg_id'],
+            'phosphoproteomics': ['protein_id', 'uniprot_id', 'accession'],
+            'epigenomics': ['gene_id', 'gene', 'gene_symbol', 'symbol']
+        }
+        
+        expected_cols = required_columns.get(omics_type, [])
+        missing = [col for col in expected_cols if col not in data.columns]
+        
+        return missing
+    
+    def _check_data_quality(self, omics_type: str, data: pd.DataFrame) -> List[str]:
+        """Check for data quality issues."""
+        issues = []
+        
+        # Check for excessive missing values
+        missing_pct = data.isnull().sum().sum() / (data.shape[0] * data.shape[1])
+        if missing_pct > 0.5:
+            issues.append(
+                f"{omics_type}: High percentage of missing values ({missing_pct*100:.1f}%). "
+                f"Consider data imputation or filtering."
+            )
+        
+        # Check for duplicate rows
+        if data.duplicated().any():
+            issues.append(
+                f"{omics_type}: Duplicate rows detected. Consider removing duplicates."
+            )
+        
+        return issues
     
     async def _integrate_omics_data(
         self, 
@@ -322,6 +389,187 @@ class JointAnalyzer:
                     stats['integration_overlap'][f"{omics_type1}_{omics_type2}"] = overlap
         
         return stats
+
+    async def calculate_pathway_activity_scores(
+        self,
+        omics_data: Dict[str, pd.DataFrame],
+        parameters: AnalysisParameters,
+        pathway_database: str = "KEGG"
+    ) -> Dict[str, Dict[str, float]]:
+        """Calculate pathway activity scores (PAS) for each omics type."""
+        self.logger.info("Calculating pathway activity scores")
+        
+        pathway_scores = {}
+        
+        for omics_type, data in omics_data.items():
+            if data.empty:
+                continue
+                
+            # Extract features for this omics type
+            features = await self._extract_omics_features(omics_type, data)
+            
+            # Calculate pathway scores
+            scores = await self._calculate_omics_pathway_scores(
+                features, omics_type, pathway_database, parameters.species
+            )
+            
+            pathway_scores[omics_type] = scores
+        
+        return pathway_scores
+
+    async def _extract_omics_features(
+        self, 
+        omics_type: str, 
+        data: pd.DataFrame
+    ) -> Dict[str, Any]:
+        """Extract relevant features from omics data."""
+        features = {
+            'identifiers': [],
+            'values': [],
+            'metadata': {}
+        }
+        
+        if omics_type == 'transcriptomics':
+            # Extract gene expression values
+            gene_cols = ['gene_id', 'gene', 'gene_symbol', 'symbol']
+            value_cols = [col for col in data.columns if col not in gene_cols]
+            
+            for col in gene_cols:
+                if col in data.columns:
+                    features['identifiers'] = data[col].tolist()
+                    break
+            
+            if value_cols:
+                features['values'] = data[value_cols].values.tolist()
+                
+        elif omics_type == 'proteomics':
+            # Extract protein abundance values
+            protein_cols = ['protein_id', 'uniprot_id', 'accession']
+            value_cols = [col for col in data.columns if col not in protein_cols]
+            
+            for col in protein_cols:
+                if col in data.columns:
+                    features['identifiers'] = data[col].tolist()
+                    break
+                    
+            if value_cols:
+                features['values'] = data[value_cols].values.tolist()
+                
+        elif omics_type == 'metabolomics':
+            # Extract metabolite abundance values
+            metabolite_cols = ['metabolite_id', 'hmdb_id', 'kegg_id']
+            value_cols = [col for col in data.columns if col not in metabolite_cols]
+            
+            for col in metabolite_cols:
+                if col in data.columns:
+                    features['identifiers'] = data[col].tolist()
+                    break
+                    
+            if value_cols:
+                features['values'] = data[value_cols].values.tolist()
+        
+        return features
+
+    async def _calculate_omics_pathway_scores(
+        self,
+        features: Dict[str, Any],
+        omics_type: str,
+        pathway_database: str,
+        species: str
+    ) -> Dict[str, float]:
+        """Calculate pathway activity scores for a specific omics type."""
+        scores = {}
+        
+        # Get pathway information
+        pathway_info = await self._get_pathway_members(pathway_database, species)
+        
+        for pathway_id, pathway_genes in pathway_info.items():
+            # Find overlapping features
+            overlapping_features = []
+            for i, identifier in enumerate(features['identifiers']):
+                if identifier in pathway_genes:
+                    if features['values'] and i < len(features['values']):
+                        # Use mean value across samples
+                        mean_value = np.mean(features['values'][i]) if isinstance(features['values'][i], list) else features['values'][i]
+                        overlapping_features.append(mean_value)
+            
+            if overlapping_features:
+                # Calculate pathway activity score as mean of overlapping features
+                scores[pathway_id] = np.mean(overlapping_features)
+            else:
+                scores[pathway_id] = 0.0
+        
+        return scores
+
+    async def _get_pathway_members(
+        self, 
+        pathway_database: str, 
+        species: str
+    ) -> Dict[str, List[str]]:
+        """Get pathway members from database."""
+        # This would typically query the actual pathway database
+        # For now, return placeholder pathway data
+        pathway_members = {
+            'hsa00010': ['GENE1', 'GENE2', 'GENE3'],  # Glycolysis
+            'hsa00020': ['GENE4', 'GENE5', 'GENE6'],  # Citrate cycle
+            'hsa00030': ['GENE7', 'GENE8', 'GENE9'],  # Pentose phosphate
+            'hsa00040': ['GENE10', 'GENE11', 'GENE12'],  # Pentose and glucuronate
+            'hsa00052': ['GENE13', 'GENE14', 'GENE15'],  # Galactose metabolism
+        }
+        
+        return pathway_members
+
+    async def integrate_multi_omics_scores(
+        self,
+        pathway_scores: Dict[str, Dict[str, float]],
+        integration_method: str = "weighted_average"
+    ) -> Dict[str, float]:
+        """Integrate pathway activity scores across omics types."""
+        self.logger.info(f"Integrating multi-omics scores using {integration_method}")
+        
+        # Get all pathway IDs
+        all_pathways = set()
+        for omics_scores in pathway_scores.values():
+            all_pathways.update(omics_scores.keys())
+        
+        integrated_scores = {}
+        
+        for pathway_id in all_pathways:
+            scores = []
+            weights = []
+            
+            for omics_type, omics_scores in pathway_scores.items():
+                if pathway_id in omics_scores:
+                    scores.append(omics_scores[pathway_id])
+                    # Weight by omics type (could be based on data quality, etc.)
+                    weight = self._get_omics_weight(omics_type)
+                    weights.append(weight)
+            
+            if scores:
+                if integration_method == "weighted_average":
+                    integrated_scores[pathway_id] = np.average(scores, weights=weights)
+                elif integration_method == "mean":
+                    integrated_scores[pathway_id] = np.mean(scores)
+                elif integration_method == "max":
+                    integrated_scores[pathway_id] = np.max(scores)
+                else:
+                    integrated_scores[pathway_id] = np.mean(scores)
+            else:
+                integrated_scores[pathway_id] = 0.0
+        
+        return integrated_scores
+
+    def _get_omics_weight(self, omics_type: str) -> float:
+        """Get weight for omics type in integration."""
+        weights = {
+            'transcriptomics': 1.0,
+            'proteomics': 0.8,
+            'metabolomics': 0.6,
+            'phosphoproteomics': 0.7,
+            'epigenomics': 0.5,
+            'genomics': 0.9
+        }
+        return weights.get(omics_type, 0.5)
     
     async def analyze_omics_correlation(
         self,

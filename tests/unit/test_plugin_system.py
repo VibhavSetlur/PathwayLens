@@ -12,16 +12,22 @@ from pathwaylens_core.plugins.plugin_manager import PluginManager
 from pathwaylens_core.plugins.plugin_registry import PluginRegistry
 from pathwaylens_core.plugins.plugin_loader import PluginLoader
 from pathwaylens_core.plugins.plugin_config import PluginConfig
-from pathwaylens_core.plugins.plugin_security import PluginSecurityManager
+from pathwaylens_core.plugins.plugin_security import PluginSecurity
 from pathwaylens_core.plugins.plugin_monitor import PluginMonitor
 from pathwaylens_core.plugins.plugin_logger import PluginLogger
 from pathwaylens_core.plugins.plugin_factory import PluginFactory
 from pathwaylens_core.plugins.plugin_validator import PluginValidator
 from pathwaylens_core.plugins.plugin_system import PluginSystem
 from pathwaylens_core.plugins.plugin_examples import (
-    DummyORAAnalysisPlugin, DummyVolcanoPlotPlugin, DummyCSVExportPlugin,
-    DummyCSVImportPlugin, DummyNormalizationPlugin, DummyNotifierPlugin
+    ExampleAnalysisPlugin, ExampleVisualizationPlugin
 )
+# Map old names to new names for compatibility
+DummyORAAnalysisPlugin = ExampleAnalysisPlugin
+DummyVolcanoPlotPlugin = ExampleVisualizationPlugin
+DummyCSVExportPlugin = None
+DummyCSVImportPlugin = None
+DummyNormalizationPlugin = None
+DummyNotifierPlugin = None
 
 
 class TestBasePlugin:
@@ -417,14 +423,14 @@ class TestPluginValidator:
         assert "not an instance of BasePlugin" in errors[0]
 
 
-class TestPluginSecurityManager:
-    """Test cases for the PluginSecurityManager class."""
+class TestPluginSecurity:
+    """Test cases for the PluginSecurity class."""
 
     @pytest.mark.asyncio
     async def test_plugin_security_manager(self):
         """Test plugin security manager functionality."""
         # No sandbox
-        security_manager_no_sandbox = PluginSecurityManager(sandbox_enabled=False)
+        security_manager_no_sandbox = PluginSecurity(sandbox_enabled=False)
         plugin = Mock(spec=BasePlugin, name="SecurePlugin", version="1.0", description="Secure")
         plugin.do_work = AsyncMock(return_value="done")
         
@@ -434,7 +440,7 @@ class TestPluginSecurityManager:
         assert result == "done"
 
         # Sandbox enabled
-        security_manager_sandbox = PluginSecurityManager(sandbox_enabled=True)
+        security_manager_sandbox = PluginSecurity(sandbox_enabled=True)
         assert security_manager_sandbox.validate_plugin_permissions(plugin)
         result = await security_manager_sandbox.execute_safely(plugin, "do_work", "data")
         assert result == "done"

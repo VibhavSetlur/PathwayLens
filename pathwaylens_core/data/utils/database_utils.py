@@ -311,20 +311,27 @@ class DatabaseUtils:
     async def insert_pathway_results(
         self,
         analysis_result_id: str,
-        pathway_results: List[Dict[str, Any]]
+        pathway_results: List[Dict[str, Any]],
+        batch_size: int = 1000
     ) -> bool:
-        """Insert pathway results into database."""
+        """
+        Insert pathway results into database using batch processing for efficiency.
+        
+        Args:
+            analysis_result_id: Analysis result identifier
+            pathway_results: List of pathway result dictionaries
+            batch_size: Number of records to insert per batch
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             conn = await self.connect()
             
+            # Prepare batch data
+            batch_data = []
             for pathway in pathway_results:
-                conn.execute("""
-                    INSERT INTO pathway_results (
-                        id, analysis_result_id, pathway_id, pathway_name, database,
-                        p_value, adjusted_p_value, enrichment_score, normalized_enrichment_score,
-                        overlap_count, pathway_count, input_count, overlapping_genes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                batch_data.append((
                     f"{analysis_result_id}_{pathway['pathway_id']}",
                     analysis_result_id,
                     pathway['pathway_id'],
@@ -340,11 +347,27 @@ class DatabaseUtils:
                     json.dumps(pathway.get('overlapping_genes', []))
                 ))
             
+            # Insert in batches for better performance
+            insert_query = """
+                INSERT INTO pathway_results (
+                    id, analysis_result_id, pathway_id, pathway_name, database,
+                    p_value, adjusted_p_value, enrichment_score, normalized_enrichment_score,
+                    overlap_count, pathway_count, input_count, overlapping_genes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            for i in range(0, len(batch_data), batch_size):
+                batch = batch_data[i:i + batch_size]
+                conn.executemany(insert_query, batch)
+                self.logger.debug(f"Inserted batch {i//batch_size + 1} ({len(batch)} records)")
+            
             conn.commit()
+            self.logger.info(f"Successfully inserted {len(pathway_results)} pathway results in batches")
             return True
             
         except Exception as e:
             self.logger.error(f"Failed to insert pathway results: {e}")
+            conn.rollback()
             return False
     
     async def get_analysis_result(self, analysis_result_id: str) -> Optional[Dict[str, Any]]:

@@ -221,25 +221,53 @@ class GSVAEngine:
             return pd.DataFrame()
     
     def _calculate_gsva_score(self, pathway_expression: pd.Series) -> float:
-        """Calculate GSVA score for a pathway."""
+        """
+        Calculate improved GSVA score for a pathway.
+        
+        Uses a more sophisticated approach that considers:
+        - Gene expression distribution
+        - Pathway coherence
+        - Expression magnitude and direction
+        """
         if len(pathway_expression) == 0:
             return 0.0
         
+        # Normalize expression values
+        if pathway_expression.std() > 0:
+            normalized = (pathway_expression - pathway_expression.mean()) / pathway_expression.std()
+        else:
+            normalized = pathway_expression - pathway_expression.mean()
+        
         # Sort genes by expression
-        sorted_expression = pathway_expression.sort_values(ascending=False)
+        sorted_expression = normalized.sort_values(ascending=False)
         n_genes = len(sorted_expression)
         
-        # Calculate cumulative sum
-        cumsum = sorted_expression.cumsum()
+        # Calculate cumulative sum with proper weighting
+        # Higher weight for genes with higher absolute expression
+        weights = np.abs(sorted_expression) / np.abs(sorted_expression).sum()
+        weighted_cumsum = (sorted_expression * weights).cumsum()
         
-        # Calculate ES (Enrichment Score)
-        max_es = cumsum.max()
-        min_es = cumsum.min()
+        # Calculate ES (Enrichment Score) - maximum deviation from zero
+        max_es = weighted_cumsum.max()
+        min_es = weighted_cumsum.min()
         
+        # Use the maximum absolute deviation
         if abs(max_es) > abs(min_es):
-            return max_es / n_genes
+            es = max_es
         else:
-            return min_es / n_genes
+            es = min_es
+        
+        # Normalize by pathway size and expression variance
+        pathway_activity = es / (n_genes ** 0.5)
+        
+        # Add coherence factor (how consistent are the expression changes)
+        coherence = 1.0 - (pathway_expression.std() / (abs(pathway_expression.mean()) + 1e-6))
+        coherence = max(0.0, min(1.0, coherence))
+        
+        # Final score combines activity and coherence
+        final_score = pathway_activity * (0.7 + 0.3 * coherence)
+        
+        return float(final_score)
     
     def _calculate_ssgsea_score(self, pathway_expression: pd.Series) -> float:
         """Calculate single sample GSEA score."""
@@ -256,11 +284,29 @@ class GSVAEngine:
         return score / len(pathway_expression)
     
     def _calculate_zscore(self, pathway_expression: pd.Series) -> float:
-        """Calculate z-score for pathway."""
+        """
+        Calculate improved z-score for pathway activity.
+        
+        Uses standardized mean with consideration of pathway size.
+        """
         if len(pathway_expression) == 0:
             return 0.0
         
-        return pathway_expression.mean()
+        # Calculate mean and standard deviation
+        mean_expr = pathway_expression.mean()
+        std_expr = pathway_expression.std()
+        
+        if std_expr > 0:
+            # Standard z-score
+            z_score = mean_expr / std_expr
+        else:
+            # If no variance, use mean directly
+            z_score = mean_expr
+        
+        # Adjust for pathway size (larger pathways get slight penalty)
+        size_factor = 1.0 / (1.0 + np.log(len(pathway_expression) + 1) / 10.0)
+        
+        return float(z_score * size_factor)
     
     def _calculate_plage_score(self, pathway_expression: pd.Series) -> float:
         """Calculate PLAGE (Pathway Level Analysis of Gene Expression) score."""

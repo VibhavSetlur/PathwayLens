@@ -4,6 +4,7 @@ Plugin manager for PathwayLens.
 
 import asyncio
 import importlib
+import importlib.util
 import inspect
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Type, Union

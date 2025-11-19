@@ -43,30 +43,33 @@ install-dev:
 
 # Testing
 test:
-	python run_tests.py --test-type all
+	python3 scripts/tests/run_tests.py --test-type all
 
 test-unit:
-	python run_tests.py --test-type unit
+	python3 scripts/tests/run_tests.py --test-type unit
 
 test-integration:
-	python run_tests.py --test-type integration
+	python3 scripts/tests/run_tests.py --test-type integration
 
 test-e2e:
-	python run_tests.py --test-type e2e
+	python3 scripts/tests/run_tests.py --test-type e2e
 
 test-coverage:
-	python run_tests.py --test-type coverage
+	python3 scripts/tests/run_tests.py --test-type coverage
+
+test-system:
+	python3 scripts/tests/test_system.py
 
 # Code Quality
 lint:
-	python run_tests.py --lint
+	python3 scripts/tests/run_tests.py --lint
 
 format:
 	black pathwaylens_core/ pathwaylens_api/ pathwaylens_cli/
 	isort pathwaylens_core/ pathwaylens_api/ pathwaylens_cli/
 
 type-check:
-	python run_tests.py --type-check
+	python3 scripts/tests/run_tests.py --type-check
 
 # Development
 clean:
@@ -95,7 +98,7 @@ docker-run:
 
 # CI/CD
 ci-test:
-	python run_tests.py --full
+	python3 scripts/tests/run_tests.py --full
 
 # Database
 db-migrate:

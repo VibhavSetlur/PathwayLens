@@ -3,7 +3,7 @@ Pydantic schemas for normalization module.
 """
 
 from typing import Dict, List, Optional, Union, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 import pandas as pd
 
@@ -28,6 +28,18 @@ class IDType(str, Enum):
     REFSEQ = "refseq"
     MGI = "mgi"
     FLYBASE = "flybase"
+    ZFIN = "zfin"
+    WORMBASE = "wormbase"
+    RGD = "rgd"
+    HGNC = "hgnc"
+    GENBANK = "genbank"
+    EMBL = "embl"
+    MIRBASE = "mirbase"
+    RFAM = "rfam"
+    ENSEMBL_TRANSCRIPT = "ensembl_transcript"
+    ENSEMBL_PROTEIN = "ensembl_protein"
+    REFSEQ_TRANSCRIPT = "refseq_transcript"
+    REFSEQ_PROTEIN = "refseq_protein"
 
 
 class InputData(BaseModel):
@@ -49,15 +61,15 @@ class AmbiguityPolicy(str, Enum):
 class NormalizedTable(BaseModel):
     """Schema for normalized data table."""
     
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     data: pd.DataFrame = Field(..., description="Normalized data table")
     species: SpeciesType = Field(..., description="Species of the data")
     id_type: IDType = Field(..., description="Type of identifiers in the data")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
-    
-    class Config:
-        arbitrary_types_allowed = True
         
-    @validator('data')
+    @field_validator('data')
+    @classmethod
     def validate_dataframe(cls, v):
         if not isinstance(v, pd.DataFrame):
             raise ValueError("Data must be a pandas DataFrame")
@@ -86,7 +98,8 @@ class NormalizationResult(BaseModel):
     created_at: str = Field(..., description="Creation timestamp")
     completed_at: Optional[str] = Field(None, description="Completion timestamp")
     
-    @validator('mapping_rate')
+    @field_validator('mapping_rate')
+    @classmethod
     def validate_mapping_rate(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Mapping rate must be between 0 and 1")
@@ -103,7 +116,8 @@ class ConversionMapping(BaseModel):
     is_ambiguous: bool = Field(default=False, description="Whether mapping is ambiguous")
     alternative_mappings: List[str] = Field(default_factory=list, description="Alternative mappings")
     
-    @validator('confidence')
+    @field_validator('confidence')
+    @classmethod
     def validate_confidence(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Confidence must be between 0 and 1")
@@ -121,7 +135,8 @@ class CrossSpeciesMapping(BaseModel):
     confidence: float = Field(..., description="Ortholog confidence score")
     method: str = Field(..., description="Method used for ortholog detection")
     
-    @validator('confidence')
+    @field_validator('confidence')
+    @classmethod
     def validate_confidence(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Confidence must be between 0 and 1")
@@ -139,7 +154,8 @@ class FormatDetectionResult(BaseModel):
     column_mapping: Dict[str, str] = Field(default_factory=dict, description="Column mappings")
     sample_data: List[Dict[str, Any]] = Field(default_factory=list, description="Sample data rows")
     
-    @validator('confidence')
+    @field_validator('confidence')
+    @classmethod
     def validate_confidence(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Confidence must be between 0 and 1")

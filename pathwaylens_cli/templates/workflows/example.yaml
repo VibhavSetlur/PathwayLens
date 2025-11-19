@@ -1,0 +1,24 @@
+workflow_name: example_basic
+steps:
+  - step_id: norm1
+    type: normalization
+    input: tests/test_data/example_genes.txt
+    species: human
+    input_type: auto
+    target_type: symbol
+    ambiguity_policy: expand
+  - step_id: enrich1
+    type: analysis
+    input: norm1
+    method: ORA
+    databases: [kegg, reactome]
+    species: human
+    fdr: 0.05
+  - step_id: compare1
+    type: comparison
+    inputs: [enrich1, enrich1]
+    comparison_type: PATHWAY_CONCORDANCE
+    species: human
+    report_dir: outputs/workflow_reports/example
+    report_format: html
+

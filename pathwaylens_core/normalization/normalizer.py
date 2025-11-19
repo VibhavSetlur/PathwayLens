@@ -441,3 +441,101 @@ class Normalizer:
             input_file, output_file, target_id_type, target_species, 
             ambiguity_policy, validate_input
         ))
+
+    async def normalize_list(
+        self,
+        gene_list: List[str],
+        input_type: Union[str, IDType] = IDType.SYMBOL,
+        output_type: Union[str, IDType] = IDType.ENSEMBL,
+        species: SpeciesType = SpeciesType.HUMAN,
+        ambiguity_policy: AmbiguityPolicy = AmbiguityPolicy.EXPAND
+    ) -> NormalizationResult:
+        """
+        Normalize a list of gene identifiers.
+        
+        Args:
+            gene_list: List of gene identifiers
+            input_type: Input identifier type
+            output_type: Output identifier type
+            species: Species
+            ambiguity_policy: How to handle ambiguous mappings
+            
+        Returns:
+            NormalizationResult with normalization information
+        """
+        job_id = str(uuid.uuid4())
+        start_time = datetime.now().isoformat()
+        
+        # Convert string types to enums if needed
+        if isinstance(input_type, str):
+            try:
+                input_type = IDType(input_type)
+            except ValueError:
+                # Try to map common names
+                if input_type.lower() == "symbol":
+                    input_type = IDType.SYMBOL
+                elif input_type.lower() == "ensembl":
+                    input_type = IDType.ENSEMBL
+                elif input_type.lower() == "entrez":
+                    input_type = IDType.ENTREZ
+                else:
+                    # Default or error
+                    pass
+                    
+        if isinstance(output_type, str):
+            try:
+                output_type = IDType(output_type)
+            except ValueError:
+                # Try to map common names
+                if output_type.lower() == "symbol":
+                    output_type = IDType.SYMBOL
+                elif output_type.lower() == "ensembl_gene_id":
+                    output_type = IDType.ENSEMBL
+                elif output_type.lower() == "entrez":
+                    output_type = IDType.ENTREZ
+                else:
+                    # Default or error
+                    pass
+
+        try:
+            # Convert identifiers
+            conversion_results = await self._convert_identifiers(
+                gene_list, input_type, output_type, 
+                species, species, ambiguity_policy
+            )
+            
+            # Calculate statistics
+            total_input = len(gene_list)
+            total_mapped = len([r for r in conversion_results if r.output_id is not None])
+            total_unmapped = total_input - total_mapped
+            mapping_rate = total_mapped / total_input if total_input > 0 else 0.0
+            
+            ambiguous_mappings = len([r for r in conversion_results if r.is_ambiguous])
+            duplicate_mappings = len([r for r in conversion_results if r.output_id is not None]) - len(set(r.output_id for r in conversion_results if r.output_id is not None))
+            
+            # Create converted genes list (simple list of mapped IDs)
+            converted_genes = [r.output_id for r in conversion_results if r.output_id is not None]
+            
+            # Create result object (extending NormalizationResult to include converted_genes for compatibility)
+            result = NormalizationResult(
+                job_id=job_id,
+                input_file="in_memory_list",
+                species=species,
+                input_id_type=input_type,
+                output_id_type=output_type,
+                total_input=total_input,
+                total_mapped=total_mapped,
+                total_unmapped=total_unmapped,
+                mapping_rate=mapping_rate,
+                ambiguous_mappings=ambiguous_mappings,
+                duplicate_mappings=duplicate_mappings,
+                created_at=start_time,
+                completed_at=datetime.now().isoformat()
+            )
+            
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"List normalization failed: {e}")
+            raise

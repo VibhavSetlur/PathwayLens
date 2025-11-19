@@ -3,7 +3,7 @@ Pydantic schemas for analysis module.
 """
 
 from typing import Dict, List, Optional, Union, Any, Tuple
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
 import pandas as pd
 from datetime import datetime
@@ -54,6 +54,9 @@ class ConsensusMethod(str, Enum):
     KOST = "kost"
     TIPPETT = "tippett"
     MUDHOLKAR_GEORGE = "mudholkar_george"
+    WILKINSON = "wilkinson"
+    PEARSON = "pearson"
+    GEOMETRIC_MEAN = "geometric_mean"
 
 
 class AnalysisParameters(BaseModel):
@@ -75,6 +78,15 @@ class AnalysisParameters(BaseModel):
     gsea_min_size: int = Field(default=15, description="Minimum gene set size for GSEA")
     gsea_max_size: int = Field(default=500, description="Maximum gene set size for GSEA")
     
+    # GSVA-specific parameters (placeholders for surface)
+    gsva_kernel: str = Field(default="gaussian", description="GSVA kernel method")
+    gsva_min_size: int = Field(default=10, description="Minimum gene set size for GSVA")
+    gsva_max_size: int = Field(default=500, description="Maximum gene set size for GSVA")
+    
+    # Topology/SPIA-like parameters
+    topology_method: str = Field(default="spia", description="Topology analysis method")
+    topology_use_direction: bool = Field(default=True, description="Use edge directionality if available")
+    
     # Consensus parameters
     consensus_method: ConsensusMethod = Field(default=ConsensusMethod.STOUFFER, description="Consensus method")
     min_databases: int = Field(default=2, description="Minimum number of databases for consensus")
@@ -88,25 +100,29 @@ class AnalysisParameters(BaseModel):
     include_networks: bool = Field(default=True, description="Include network analysis")
     export_formats: List[str] = Field(default=["json", "csv"], description="Export formats")
     
-    @validator('significance_threshold')
+    @field_validator('significance_threshold')
+    @classmethod
     def validate_significance_threshold(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Significance threshold must be between 0 and 1")
         return v
     
-    @validator('min_pathway_size')
+    @field_validator('min_pathway_size')
+    @classmethod
     def validate_min_pathway_size(cls, v):
         if v < 1:
             raise ValueError("Minimum pathway size must be at least 1")
         return v
     
-    @validator('max_pathway_size')
+    @field_validator('max_pathway_size')
+    @classmethod
     def validate_max_pathway_size(cls, v):
         if v < 1:
             raise ValueError("Maximum pathway size must be at least 1")
         return v
     
-    @validator('gsea_permutations')
+    @field_validator('gsea_permutations')
+    @classmethod
     def validate_gsea_permutations(cls, v):
         if v < 100:
             raise ValueError("GSEA permutations must be at least 100")
@@ -126,6 +142,15 @@ class PathwayResult(BaseModel):
     enrichment_score: Optional[float] = Field(None, description="Enrichment score")
     normalized_enrichment_score: Optional[float] = Field(None, description="Normalized enrichment score")
     
+    # Research-grade statistical metrics
+    odds_ratio: Optional[float] = Field(None, description="Odds ratio for enrichment (ORA only)")
+    odds_ratio_ci_lower: Optional[float] = Field(None, description="95% CI lower bound for odds ratio")
+    odds_ratio_ci_upper: Optional[float] = Field(None, description="95% CI upper bound for odds ratio")
+    fold_enrichment: Optional[float] = Field(None, description="Fold enrichment ratio")
+    effect_size: Optional[float] = Field(None, description="Effect size (Cohen's h)")
+    genes_expected: Optional[float] = Field(None, description="Expected genes by chance")
+    statistical_power: Optional[float] = Field(None, description="Post-hoc statistical power")
+    
     # Gene counts
     overlap_count: int = Field(..., description="Number of overlapping genes")
     pathway_count: int = Field(..., description="Total genes in pathway")
@@ -144,13 +169,15 @@ class PathwayResult(BaseModel):
     analysis_method: str = Field(..., description="Analysis method used")
     confidence_score: Optional[float] = Field(None, description="Confidence score")
     
-    @validator('p_value')
+    @field_validator('p_value')
+    @classmethod
     def validate_p_value(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("P-value must be between 0 and 1")
         return v
     
-    @validator('adjusted_p_value')
+    @field_validator('adjusted_p_value')
+    @classmethod
     def validate_adjusted_p_value(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Adjusted p-value must be between 0 and 1")
@@ -174,7 +201,8 @@ class DatabaseResult(BaseModel):
     coverage: float = Field(..., description="Coverage of input genes")
     redundancy: float = Field(default=0.0, description="Pathway redundancy")
     
-    @validator('coverage')
+    @field_validator('coverage')
+    @classmethod
     def validate_coverage(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Coverage must be between 0 and 1")
@@ -197,7 +225,8 @@ class ConsensusResult(BaseModel):
     reproducibility: float = Field(..., description="Reproducibility score")
     stability: float = Field(..., description="Stability score")
     
-    @validator('consensus_score')
+    @field_validator('consensus_score')
+    @classmethod
     def validate_consensus_score(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Consensus score must be between 0 and 1")
@@ -243,13 +272,15 @@ class AnalysisResult(BaseModel):
     warnings: List[str] = Field(default_factory=list, description="Warning messages")
     errors: List[str] = Field(default_factory=list, description="Error messages")
     
-    @validator('overall_quality')
+    @field_validator('overall_quality')
+    @classmethod
     def validate_overall_quality(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Overall quality must be between 0 and 1")
         return v
     
-    @validator('reproducibility')
+    @field_validator('reproducibility')
+    @classmethod
     def validate_reproducibility(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Reproducibility must be between 0 and 1")
@@ -275,7 +306,8 @@ class AnalysisSummary(BaseModel):
     quality_score: float = Field(..., description="Overall quality score")
     completion_time: Optional[str] = Field(None, description="Completion time")
     
-    @validator('quality_score')
+    @field_validator('quality_score')
+    @classmethod
     def validate_quality_score(cls, v):
         if not 0 <= v <= 1:
             raise ValueError("Quality score must be between 0 and 1")
@@ -299,7 +331,8 @@ class AnalysisProgress(BaseModel):
     processing_time: float = Field(default=0.0, description="Processing time so far")
     memory_usage: float = Field(default=0.0, description="Memory usage in MB")
     
-    @validator('progress')
+    @field_validator('progress')
+    @classmethod
     def validate_progress(cls, v):
         if not 0 <= v <= 100:
             raise ValueError("Progress must be between 0 and 100")

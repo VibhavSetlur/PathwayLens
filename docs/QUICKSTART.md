@@ -257,6 +257,22 @@ pathwaylens info databases
 pathwaylens info databases --verbose
 ```
 
+## Workflows and Plugins
+
+### Run a Workflow
+
+```bash
+pathwaylens workflow validate pathwaylens_cli/templates/workflows/example.yaml
+pathwaylens workflow run pathwaylens_cli/templates/workflows/example.yaml
+```
+
+### Manage Plugins
+
+```bash
+pathwaylens plugin list
+pathwaylens plugin exec example-plugin --input data.json
+```
+
 ## Next Steps
 
 Now that you're familiar with the basics:

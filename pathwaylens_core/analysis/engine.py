@@ -17,6 +17,9 @@ from .schemas import (
 )
 from .ora_engine import ORAEngine
 from .gsea_engine import GSEAEngine
+from .gsva_engine import GSVAEngine
+from .topology_engine import TopologyEngine
+from .multi_omics_engine import MultiOmicsEngine
 from .consensus_engine import ConsensusEngine
 from ..data import DatabaseManager
 
@@ -38,6 +41,9 @@ class AnalysisEngine:
         self.ora_engine = ORAEngine(self.database_manager)
         self.gsea_engine = GSEAEngine(self.database_manager)
         self.consensus_engine = ConsensusEngine()
+        self.gsva_engine = GSVAEngine(self.database_manager)
+        self.topology_engine = TopologyEngine(self.database_manager)
+        self.multi_omics_engine = MultiOmicsEngine(self.database_manager)
     
     async def analyze(
         self,
@@ -61,6 +67,7 @@ class AnalysisEngine:
         
         self.logger.info(f"Starting analysis job {job_id}")
         
+        input_info = {}  # Initialize input_info early
         try:
             # Step 1: Prepare input data
             gene_list, input_info = await self._prepare_input_data(input_data)
@@ -73,6 +80,12 @@ class AnalysisEngine:
                 database_results = await self._perform_ora_analysis(gene_list, parameters)
             elif parameters.analysis_type == AnalysisType.GSEA:
                 database_results = await self._perform_gsea_analysis(gene_list, parameters)
+            elif parameters.analysis_type == AnalysisType.GSVA:
+                database_results = await self._perform_gsva_analysis(gene_list, parameters)
+            elif parameters.analysis_type == AnalysisType.TOPOLOGY:
+                database_results = await self._perform_topology_analysis(gene_list, parameters)
+            elif parameters.analysis_type == AnalysisType.MULTI_OMICS:
+                database_results = await self._perform_multi_omics_analysis(gene_list, parameters)
             else:
                 raise ValueError(f"Unsupported analysis type: {parameters.analysis_type}")
             
@@ -124,9 +137,13 @@ class AnalysisEngine:
             return result
             
         except Exception as e:
-            self.logger.error(f"Analysis job {job_id} failed: {e}")
+            error_msg = str(e)
+            self.logger.error(f"Analysis job {job_id} failed: {error_msg}")
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
+            
+            # Provide more helpful error messages
+            user_friendly_error = self._format_error_message(error_msg, input_info)
             
             return AnalysisResult(
                 job_id=job_id,
@@ -144,8 +161,57 @@ class AnalysisEngine:
                 created_at=start_time.isoformat(),
                 completed_at=end_time.isoformat(),
                 processing_time=processing_time,
-                errors=[f"Analysis failed: {str(e)}"]
+                errors=[user_friendly_error]
             )
+    
+    def _format_error_message(self, error_msg: str, input_info: Dict[str, Any]) -> str:
+        """
+        Format error message to be more user-friendly with suggestions.
+        
+        Args:
+            error_msg: Original error message
+            input_info: Input data information
+            
+        Returns:
+            Formatted error message with suggestions
+        """
+        base_msg = f"Analysis failed: {error_msg}"
+        suggestions = []
+        
+        # Check for common error patterns and provide suggestions
+        error_lower = error_msg.lower()
+        
+        if "file" in error_lower or "not found" in error_lower:
+            suggestions.append("Please verify that the input file path is correct and the file exists.")
+            if input_info.get('file_path'):
+                suggestions.append(f"Attempted to read: {input_info['file_path']}")
+        
+        if "database" in error_lower or "connection" in error_lower:
+            suggestions.append("Database connection issue detected.")
+            suggestions.append("Please check your internet connection and database availability.")
+            suggestions.append("You can try again later or use cached results if available.")
+        
+        if "empty" in error_lower or "no genes" in error_lower:
+            suggestions.append("No genes were found in the input data.")
+            suggestions.append("Please verify that your input file contains gene identifiers.")
+            suggestions.append("Common gene identifier columns: 'gene', 'gene_id', 'gene_symbol', 'symbol'")
+        
+        if "species" in error_lower or "invalid" in error_lower:
+            suggestions.append("Species validation failed.")
+            suggestions.append("Please verify that the specified species is supported.")
+            suggestions.append("Supported species: human, mouse, rat, drosophila, zebrafish, c_elegans, s_cerevisiae")
+        
+        if "timeout" in error_lower:
+            suggestions.append("Request timed out. This may be due to:")
+            suggestions.append("  - Large input dataset (consider processing in batches)")
+            suggestions.append("  - Slow network connection")
+            suggestions.append("  - Database server overload")
+            suggestions.append("Please try again with a smaller dataset or check your network connection.")
+        
+        if suggestions:
+            return f"{base_msg}\n\nSuggestions:\n" + "\n".join(f"  • {s}" for s in suggestions)
+        
+        return base_msg
     
     async def _prepare_input_data(
         self, 
@@ -207,6 +273,9 @@ class AnalysisEngine:
     
     def _validate_parameters(self, parameters: AnalysisParameters, gene_list: List[str]):
         """Validate analysis parameters."""
+        if parameters is None:
+            raise ValueError("Analysis parameters cannot be None")
+        
         if not parameters.databases:
             raise ValueError("At least one database must be specified")
         
@@ -252,6 +321,93 @@ class AnalysisEngine:
                     coverage=0.0
                 )
         
+        return database_results
+
+    async def _perform_gsva_analysis(
+        self, 
+        gene_list: List[str], 
+        parameters: AnalysisParameters
+    ) -> Dict[str, DatabaseResult]:
+        """Perform GSVA analysis."""
+        database_results = {}
+        for database in parameters.databases:
+            self.logger.info(f"Performing GSVA analysis with {database.value}")
+            try:
+                result = await self.gsva_engine.analyze(
+                    gene_list=gene_list,
+                    database=database,
+                    species=parameters.species,
+                    min_size=parameters.gsea_min_size,
+                    max_size=parameters.gsea_max_size
+                )
+                database_results[database.value] = result
+            except Exception as e:
+                self.logger.error(f"GSVA analysis failed for {database.value}: {e}")
+                database_results[database.value] = DatabaseResult(
+                    database=database,
+                    total_pathways=0,
+                    significant_pathways=0,
+                    pathways=[],
+                    species=parameters.species,
+                    coverage=0.0
+                )
+        return database_results
+
+    async def _perform_topology_analysis(
+        self, 
+        gene_list: List[str], 
+        parameters: AnalysisParameters
+    ) -> Dict[str, DatabaseResult]:
+        """Perform topology-based (SPIA-like) analysis."""
+        database_results = {}
+        for database in parameters.databases:
+            self.logger.info(f"Performing topology analysis with {database.value}")
+            try:
+                result = await self.topology_engine.analyze(
+                    gene_list=gene_list,
+                    database=database,
+                    species=parameters.species,
+                    significance_threshold=parameters.significance_threshold,
+                )
+                database_results[database.value] = result
+            except Exception as e:
+                self.logger.error(f"Topology analysis failed for {database.value}: {e}")
+                database_results[database.value] = DatabaseResult(
+                    database=database,
+                    total_pathways=0,
+                    significant_pathways=0,
+                    pathways=[],
+                    species=parameters.species,
+                    coverage=0.0
+                )
+        return database_results
+
+    async def _perform_multi_omics_analysis(
+        self, 
+        gene_list: List[str], 
+        parameters: AnalysisParameters
+    ) -> Dict[str, DatabaseResult]:
+        """Perform multi-omics pathway analysis (placeholder wiring)."""
+        database_results = {}
+        for database in parameters.databases:
+            self.logger.info(f"Performing multi-omics analysis with {database.value}")
+            try:
+                result = await self.multi_omics_engine.analyze(
+                    gene_list=gene_list,
+                    database=database,
+                    species=parameters.species,
+                )
+                database_results[database.value] = result
+            except Exception as e:
+                self.logger.error(f"Multi-omics analysis failed for {database.value}: {e}")
+                database_results[database.value] = DatabaseResult(
+                    database=database,
+                    total_pathways=0,
+                    significant_pathways=0,
+                    pathways=[],
+                    species=parameters.species,
+                    coverage=0.0
+                )
         return database_results
     
     async def _perform_gsea_analysis(

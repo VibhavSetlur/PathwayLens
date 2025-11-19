@@ -1,5 +1,2 @@
 [console_scripts]
 pathwaylens = pathwaylens_cli.main:main
-
-[gui_scripts]
-pathwaylens-gui = pathwaylens_cli.main:gui_app

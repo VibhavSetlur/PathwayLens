@@ -294,3 +294,97 @@ class Config:
         """Reload configuration from file."""
         self.config = self._load_config()
         self.logger.info("Configuration reloaded")
+    
+    def validate_config(self) -> Dict[str, Any]:
+        """
+        Validate configuration and return validation results.
+        
+        Returns:
+            Dictionary with validation status and any errors/warnings
+        """
+        errors = []
+        warnings = []
+        
+        # Validate API configuration
+        api_config = self.get("api", {})
+        if "base_url" in api_config and not isinstance(api_config["base_url"], str):
+            errors.append("api.base_url must be a string")
+        if "timeout" in api_config:
+            try:
+                timeout = float(api_config["timeout"])
+                if timeout <= 0:
+                    errors.append("api.timeout must be positive")
+            except (ValueError, TypeError):
+                errors.append("api.timeout must be a number")
+        
+        # Validate analysis configuration
+        analysis_config = self.get("analysis", {})
+        if "significance_threshold" in analysis_config:
+            try:
+                threshold = float(analysis_config["significance_threshold"])
+                if not 0 <= threshold <= 1:
+                    errors.append("analysis.significance_threshold must be between 0 and 1")
+            except (ValueError, TypeError):
+                errors.append("analysis.significance_threshold must be a number")
+        
+        if "min_pathway_size" in analysis_config:
+            try:
+                min_size = int(analysis_config["min_pathway_size"])
+                if min_size < 1:
+                    errors.append("analysis.min_pathway_size must be at least 1")
+            except (ValueError, TypeError):
+                errors.append("analysis.min_pathway_size must be an integer")
+        
+        # Validate output configuration
+        output_config = self.get("output", {})
+        if "directory" in output_config and not isinstance(output_config["directory"], str):
+            errors.append("output.directory must be a string")
+        
+        # Check for deprecated or unknown keys
+        known_keys = {"api", "analysis", "visualization", "output", "logging"}
+        for key in self.config.keys():
+            if key not in known_keys:
+                warnings.append(f"Unknown configuration key: {key}")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings
+        }
+    
+    def get_user_preferences(self) -> Dict[str, Any]:
+        """
+        Get user preferences (subset of configuration that users typically customize).
+        
+        Returns:
+            Dictionary of user preferences
+        """
+        return {
+            "analysis": self.get_analysis_config(),
+            "visualization": self.get_visualization_config(),
+            "output": self.get_output_config()
+        }
+    
+    def set_user_preferences(self, preferences: Dict[str, Any]) -> None:
+        """
+        Set user preferences.
+        
+        Args:
+            preferences: Dictionary of preferences to set
+        """
+        for section, values in preferences.items():
+            if section in ["analysis", "visualization", "output"]:
+                for key, value in values.items():
+                    self.set(f"{section}.{key}", value)
+    
+    @property
+    def api_url(self) -> str:
+        """Get API base URL."""
+        api_config = self.get_api_config()
+        return api_config.get("base_url", "http://localhost:8000")
+    
+    @property
+    def api_key(self) -> Optional[str]:
+        """Get API key."""
+        api_config = self.get_api_config()
+        return api_config.get("api_key", None)

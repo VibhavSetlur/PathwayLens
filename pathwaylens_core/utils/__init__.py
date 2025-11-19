@@ -1,9 +1,20 @@
 """
-Utility modules for PathwayLens core.
+Utility modules for PathwayLens.
 """
 
-from .config import get_config
+from .parallel import ParallelProcessor, get_optimal_workers
+from .streaming import StreamingProcessor, stream_gene_list
+from .provenance import ProvenanceTracker, ProvenanceRecord, ReproducibilityManager
+from .reproducibility import SeedManager, ensure_deterministic
 
 __all__ = [
-    "get_config"
+    "ParallelProcessor",
+    "get_optimal_workers",
+    "StreamingProcessor",
+    "stream_gene_list",
+    "ProvenanceTracker",
+    "ProvenanceRecord",
+    "ReproducibilityManager",
+    "SeedManager",
+    "ensure_deterministic",
 ]

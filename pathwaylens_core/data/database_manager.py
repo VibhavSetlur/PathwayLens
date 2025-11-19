@@ -99,7 +99,8 @@ class DatabaseManager:
         self, 
         databases: List[str], 
         species: SpeciesType,
-        use_cache: bool = True
+        use_cache: bool = True,
+        parallel: bool = True
     ) -> Dict[str, List[PathwayInfo]]:
         """
         Get pathways from multiple databases.
@@ -108,43 +109,61 @@ class DatabaseManager:
             databases: List of database names to query
             species: Species to get pathways for
             use_cache: Whether to use cached results
+            parallel: Whether to query databases in parallel
             
         Returns:
             Dictionary mapping database names to lists of pathway information
         """
         results = {}
         
-        for db_name in databases:
+        async def _get_pathways_for_db(db_name: str) -> tuple[str, List[PathwayInfo]]:
+            """Helper function to get pathways for a single database."""
             if db_name not in self.adapters:
                 self.logger.warning(f"Unknown database: {db_name}")
-                continue
+                return db_name, []
             
             if not self.availability_status.get(db_name, False):
                 self.logger.warning(f"Database {db_name} is not available")
-                continue
+                return db_name, []
             
             # Check cache first
             cache_key = f"pathways_{db_name}_{species.value}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
-                    results[db_name] = cached_result
-                    continue
+                    return db_name, cached_result
             
             try:
                 adapter = self.adapters[db_name]
                 pathways = await adapter.get_pathways(species)
-                results[db_name] = pathways
                 
                 # Cache the result
                 if use_cache and self.cache_manager:
                     await self.cache_manager.set(cache_key, pathways)
                 
                 self.logger.info(f"Retrieved {len(pathways)} pathways from {db_name}")
+                return db_name, pathways
                 
             except Exception as e:
                 self.logger.error(f"Error getting pathways from {db_name}: {e}")
-                results[db_name] = []
+                return db_name, []
+        
+        # Query databases in parallel or sequentially
+        if parallel and len(databases) > 1:
+            tasks = [_get_pathways_for_db(db_name) for db_name in databases]
+            db_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in db_results:
+                if isinstance(result, Exception):
+                    self.logger.error(f"Exception in parallel query: {result}")
+                    continue
+                db_name, pathways = result
+                results[db_name] = pathways
+        else:
+            # Sequential query
+            for db_name in databases:
+                db_name, pathways = await _get_pathways_for_db(db_name)
+                results[db_name] = pathways
         
         return results
     
@@ -204,7 +223,8 @@ class DatabaseManager:
         gene_id: str, 
         databases: List[str], 
         species: SpeciesType,
-        use_cache: bool = True
+        use_cache: bool = True,
+        parallel: bool = True
     ) -> Dict[str, List[str]]:
         """
         Get pathways containing a gene from multiple databases.
@@ -214,39 +234,107 @@ class DatabaseManager:
             databases: List of database names to query
             species: Species
             use_cache: Whether to use cached results
+            parallel: Whether to query databases in parallel
             
         Returns:
             Dictionary mapping database names to lists of pathway identifiers
         """
         results = {}
         
-        for db_name in databases:
+        async def _get_gene_pathways_for_db(db_name: str) -> tuple[str, List[str]]:
+            """Helper function to get gene pathways for a single database."""
             if db_name not in self.adapters:
-                continue
+                return db_name, []
             
             if not self.availability_status.get(db_name, False):
-                continue
+                return db_name, []
             
             # Check cache first
             cache_key = f"gene_pathways_{db_name}_{gene_id}_{species.value}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
-                    results[db_name] = cached_result
-                    continue
+                    return db_name, cached_result
             
             try:
                 adapter = self.adapters[db_name]
                 pathways = await adapter.get_gene_pathways(gene_id, species)
-                results[db_name] = pathways
                 
                 # Cache the result
                 if use_cache and self.cache_manager:
                     await self.cache_manager.set(cache_key, pathways)
                 
+                return db_name, pathways
+                
             except Exception as e:
                 self.logger.error(f"Error getting gene pathways from {db_name}: {e}")
-                results[db_name] = []
+                return db_name, []
+        
+        # Query databases in parallel or sequentially
+        if parallel and len(databases) > 1:
+            tasks = [_get_gene_pathways_for_db(db_name) for db_name in databases]
+            db_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in db_results:
+                if isinstance(result, Exception):
+                    self.logger.error(f"Exception in parallel query: {result}")
+                    continue
+                db_name, pathways = result
+                results[db_name] = pathways
+        else:
+            # Sequential query
+            for db_name in databases:
+                db_name, pathways = await _get_gene_pathways_for_db(db_name)
+                results[db_name] = pathways
+        
+        return results
+    
+    async def get_gene_pathways_batch(
+        self,
+        gene_ids: List[str],
+        databases: List[str],
+        species: SpeciesType,
+        use_cache: bool = True,
+        parallel: bool = True
+    ) -> Dict[str, Dict[str, List[str]]]:
+        """
+        Get pathways for multiple genes in batch (optimized for multiple queries).
+        
+        Args:
+            gene_ids: List of gene identifiers
+            databases: List of database names to query
+            species: Species
+            use_cache: Whether to use cached results
+            parallel: Whether to query in parallel
+            
+        Returns:
+            Dictionary mapping gene IDs to database results
+        """
+        results = {}
+        
+        async def _get_pathways_for_gene(gene_id: str) -> tuple[str, Dict[str, List[str]]]:
+            """Get pathways for a single gene."""
+            gene_results = await self.get_gene_pathways(
+                gene_id, databases, species, use_cache, parallel=False
+            )
+            return gene_id, gene_results
+        
+        # Process genes in parallel if enabled
+        if parallel and len(gene_ids) > 1:
+            tasks = [_get_pathways_for_gene(gene_id) for gene_id in gene_ids]
+            gene_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in gene_results:
+                if isinstance(result, Exception):
+                    self.logger.error(f"Exception in batch gene query: {result}")
+                    continue
+                gene_id, gene_pathways = result
+                results[gene_id] = gene_pathways
+        else:
+            # Sequential processing
+            for gene_id in gene_ids:
+                gene_id, gene_pathways = await _get_pathways_for_gene(gene_id)
+                results[gene_id] = gene_pathways
         
         return results
     

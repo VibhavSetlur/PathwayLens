@@ -355,3 +355,149 @@ class TestDataFixtures:
                 'Treatment': [1.5, 2.5]
             })
         }
+    
+    @pytest.fixture
+    def large_gene_list(self) -> List[str]:
+        """Large gene list for performance testing (1000 genes)."""
+        return [f"GENE{i:04d}" for i in range(1, 1001)]
+    
+    @pytest.fixture
+    def very_large_gene_list(self) -> List[str]:
+        """Very large gene list for performance testing (10000 genes)."""
+        return [f"GENE{i:05d}" for i in range(1, 10001)]
+    
+    @pytest.fixture
+    def large_expression_data(self) -> pd.DataFrame:
+        """Large expression dataset for performance testing (1000 genes, 20 samples)."""
+        np.random.seed(42)
+        genes = [f"GENE{i:04d}" for i in range(1, 1001)]
+        samples = [f"Sample_{i:02d}" for i in range(1, 21)]
+        
+        data = {'Gene': genes}
+        for sample in samples:
+            data[sample] = np.random.normal(1.0, 0.5, 1000)
+        
+        return pd.DataFrame(data)
+    
+    @pytest.fixture
+    def cross_species_gene_data(self) -> Dict[str, List[str]]:
+        """Cross-species gene data for testing orthology."""
+        return {
+            "human": ["BRCA1", "BRCA2", "TP53", "EGFR", "MYC"],
+            "mouse": ["Brca1", "Brca2", "Trp53", "Egfr", "Myc"],
+            "rat": ["Brca1", "Brca2", "Tp53", "Egfr", "Myc"],
+            "zebrafish": ["brca1", "brca2", "tp53", "egfr", "myc"]
+        }
+    
+    @pytest.fixture
+    def multi_omics_large_dataset(self) -> Dict[str, pd.DataFrame]:
+        """Large multi-omics dataset for performance testing."""
+        np.random.seed(42)
+        
+        # Transcriptomics (1000 genes)
+        transcriptomics = pd.DataFrame({
+            'Gene': [f"GENE{i:04d}" for i in range(1, 1001)],
+            **{f"Sample_{j:02d}": np.random.normal(1.0, 0.3, 1000) 
+               for j in range(1, 11)}
+        })
+        
+        # Proteomics (800 proteins)
+        proteomics = pd.DataFrame({
+            'Protein': [f"PROT{i:04d}" for i in range(1, 801)],
+            **{f"Sample_{j:02d}": np.random.normal(1.0, 0.3, 800) 
+               for j in range(1, 11)}
+        })
+        
+        # Metabolomics (500 metabolites)
+        metabolomics = pd.DataFrame({
+            'Metabolite': [f"MET{i:04d}" for i in range(1, 501)],
+            **{f"Sample_{j:02d}": np.random.normal(1.0, 0.3, 500) 
+               for j in range(1, 11)}
+        })
+        
+        return {
+            "transcriptomics": transcriptomics,
+            "proteomics": proteomics,
+            "metabolomics": metabolomics
+        }
+    
+    @pytest.fixture
+    def edge_case_gene_list(self) -> Dict[str, List[str]]:
+        """Edge case gene lists for testing."""
+        return {
+            "empty": [],
+            "single": ["GENE1"],
+            "duplicates": ["GENE1", "GENE1", "GENE2", "GENE2"],
+            "mixed_case": ["Gene1", "GENE2", "gene3", "Gene4"],
+            "special_chars": ["GENE-1", "GENE_2", "GENE.3", "GENE/4"],
+            "numbers_only": ["123", "456", "789"],
+            "very_long": [f"VERY_LONG_GENE_NAME_{i}" * 10 for i in range(10)]
+        }
+    
+    @pytest.fixture
+    def mock_database_responses(self) -> Dict[str, Any]:
+        """Mock database responses for testing."""
+        return {
+            "pathway_query": {
+                "pathway_id": "hsa00010",
+                "pathway_name": "Glycolysis / Gluconeogenesis",
+                "genes": ["GENE1", "GENE2", "GENE3"],
+                "species": "human",
+                "database": "KEGG"
+            },
+            "gene_pathway_query": {
+                "gene_id": "BRCA1",
+                "pathways": [
+                    {"pathway_id": "hsa03440", "pathway_name": "Homologous recombination"},
+                    {"pathway_id": "hsa03430", "pathway_name": "Mismatch repair"}
+                ]
+            },
+            "orthology_query": {
+                "human_gene": "BRCA1",
+                "orthologs": {
+                    "mouse": "Brca1",
+                    "rat": "Brca1",
+                    "zebrafish": "brca1"
+                }
+            }
+        }
+    
+    @pytest.fixture
+    def temp_dir(self, tmp_path):
+        """Temporary directory for file operations."""
+        return tmp_path
+    
+    @pytest.fixture
+    def sample_workflow_config(self) -> Dict[str, Any]:
+        """Sample workflow configuration for testing."""
+        return {
+            "workflow_name": "test_workflow",
+            "steps": [
+                {
+                    "step_id": "normalize",
+                    "step_type": "normalization",
+                    "parameters": {
+                        "input_type": "symbol",
+                        "output_type": "ensembl_gene_id",
+                        "species": "human"
+                    }
+                },
+                {
+                    "step_id": "analyze",
+                    "step_type": "analysis",
+                    "parameters": {
+                        "analysis_type": "ORA",
+                        "database": "GO",
+                        "significance_threshold": 0.05
+                    }
+                },
+                {
+                    "step_id": "visualize",
+                    "step_type": "visualization",
+                    "parameters": {
+                        "plot_type": "bar",
+                        "output_format": "html"
+                    }
+                }
+            ]
+        }
