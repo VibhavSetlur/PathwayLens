@@ -10,6 +10,7 @@ from .tenx_io import TenXIO
 from .de_tools import DEToolParser
 from .gmt_io import GMTIO
 from .gct_io import GCTIO
+from .output_manager import AnalysisOutputManager
 
 __all__ = [
     "AnnDataIO",
@@ -17,5 +18,6 @@ __all__ = [
     "DEToolParser",
     "GMTIO",
     "GCTIO",
+    "AnalysisOutputManager",
 ]
 

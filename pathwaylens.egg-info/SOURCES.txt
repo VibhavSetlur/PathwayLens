@@ -1,3 +1,4 @@
+LICENSE
 README.md
 pyproject.toml
 setup.py
@@ -27,9 +28,11 @@ pathwaylens_cli/utils/config.py
 pathwaylens_cli/utils/exceptions.py
 pathwaylens_cli/utils/pipeline.py
 pathwaylens_core/__init__.py
+pathwaylens_core/exceptions.py
 pathwaylens_core/analysis/__init__.py
 pathwaylens_core/analysis/bayesian_engine.py
 pathwaylens_core/analysis/consensus_engine.py
+pathwaylens_core/analysis/diagnostics.py
 pathwaylens_core/analysis/engine.py
 pathwaylens_core/analysis/gsea_engine.py
 pathwaylens_core/analysis/gsva_engine.py
@@ -38,6 +41,7 @@ pathwaylens_core/analysis/network_engine.py
 pathwaylens_core/analysis/ora_engine.py
 pathwaylens_core/analysis/pathway_interaction_engine.py
 pathwaylens_core/analysis/schemas.py
+pathwaylens_core/analysis/statistical_utils.py
 pathwaylens_core/analysis/topology_engine.py
 pathwaylens_core/comparison/__init__.py
 pathwaylens_core/comparison/clustering_analyzer.py
@@ -82,6 +86,7 @@ pathwaylens_core/io/anndata_io.py
 pathwaylens_core/io/de_tools.py
 pathwaylens_core/io/gct_io.py
 pathwaylens_core/io/gmt_io.py
+pathwaylens_core/io/output_manager.py
 pathwaylens_core/io/tenx_io.py
 pathwaylens_core/mapping/__init__.py
 pathwaylens_core/mapping/mapper.py
@@ -131,10 +136,12 @@ pathwaylens_core/plugins/plugin_validator.py
 pathwaylens_core/plugins/visualization_plugin.py
 pathwaylens_core/reporting/__init__.py
 pathwaylens_core/reporting/reporting.py
+pathwaylens_core/schemas/provenance.py
 pathwaylens_core/utils/__init__.py
 pathwaylens_core/utils/config.py
 pathwaylens_core/utils/debugging.py
 pathwaylens_core/utils/logging_utils.py
+pathwaylens_core/utils/manifest_generator.py
 pathwaylens_core/utils/parallel.py
 pathwaylens_core/utils/profiler.py
 pathwaylens_core/utils/provenance.py
@@ -142,10 +149,12 @@ pathwaylens_core/utils/reproducibility.py
 pathwaylens_core/utils/streaming.py
 pathwaylens_core/visualization/__init__.py
 pathwaylens_core/visualization/dashboard_builder.py
+pathwaylens_core/visualization/diagnostic_plots.py
 pathwaylens_core/visualization/engine.py
 pathwaylens_core/visualization/export_manager.py
 pathwaylens_core/visualization/multi_omics_visualizer.py
 pathwaylens_core/visualization/network_renderer.py
+pathwaylens_core/visualization/palettes.py
 pathwaylens_core/visualization/plotly_renderer.py
 pathwaylens_core/visualization/report_generator.py
 pathwaylens_core/visualization/schemas.py

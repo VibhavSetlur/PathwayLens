@@ -60,8 +60,8 @@ setup(
         "goatools>=1.3.0",
     ],
     entry_points={
-        "console_scripts": [
-            "pathwaylens=pathwaylens_cli.main:main",
+        'console_scripts': [
+            'pathwaylens=pathwaylens_cli.main:app',
         ],
     },
     classifiers=[

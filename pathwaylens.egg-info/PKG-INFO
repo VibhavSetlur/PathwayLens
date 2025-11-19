@@ -6,6 +6,7 @@ Author: PathwayLens Team
 Author-email: PathwayLens Team <pathwaylens@example.com>
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: typer>=0.9.0
 Requires-Dist: rich>=13.0.0
 Requires-Dist: requests>=2.31.0
@@ -52,198 +53,189 @@ Requires-Dist: safety>=2.3.0; extra == "dev"
 Provides-Extra: all
 Requires-Dist: pathwaylens[analysis,pathways,storage]; extra == "all"
 Dynamic: author
+Dynamic: license-file
 Dynamic: requires-python
 
-# 🧬 PathwayLens 2.0
+# PathwayLens
 
-**Next-generation computational biology platform for multi-omics pathway analysis**
+Research-grade pathway enrichment analysis for bulk RNA-seq, single-cell RNA-seq, ATAC-seq, proteomics, and multi-omics datasets.
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://badge.fury.io/py/pathwaylens.svg)](https://badge.fury.io/py/pathwaylens)
-
-## 🚀 Quick Start
-
-### 📦 Easy Installation
+## Installation
 
 ```bash
-# Install core features (lightweight, ~50MB)
 pip install pathwaylens
-
-# Install all features (full functionality, ~500MB)
-pip install pathwaylens[all]
-
-# Install specific features
-pip install pathwaylens[analysis]  # Core analysis tools
-pip install pathwaylens[viz]       # Visualization tools
-pip install pathwaylens[pathways]  # Pathway databases
-pip install pathwaylens[api]       # Web API
 ```
 
-### 🔧 Basic Usage
+See [INSTALL.md](INSTALL.md) for detailed instructions.
+
+## Quick Start
+
+### Command-Line Interface
 
 ```bash
-# Check installation
+# Get help
 pathwaylens --help
 
-# Normalize gene IDs
-pathwaylens normalize gene-ids --input genes.csv --species human
+# Normalize gene identifiers
+pathwaylens normalize genes.txt --species human --target-type symbol
 
-# Perform pathway analysis
-pathwaylens analyze enrichment --input deseq2_results.csv --databases kegg,reactome
+# Over-representation analysis
+pathwaylens analyze ora \
+  --input gene_list.txt \
+  --databases kegg reactome \
+  --species human \
+  --output results/
+
+# Gene set enrichment analysis
+pathwaylens analyze gsea \
+  --input ranked_genes.txt \
+  --databases go \
+  --species human
 
 # Compare datasets
-pathwaylens compare --input dataset1.csv dataset2.csv --species human
+pathwaylens compare dataset1.csv dataset2.csv \
+  --species human \
+  --output comparison/
 ```
 
-## 📦 Installation Options
+### Python API
 
-### 🎯 Minimal Installation (Recommended for CLI users)
+```python
+import asyncio
+from pathwaylens_core.analysis import ORAEngine
+from pathwaylens_core.data import DatabaseManager
+from pathwaylens_core.analysis.schemas import DatabaseType
+
+# Initialize
+db_manager = DatabaseManager()
+ora = ORAEngine(db_manager)
+
+# Run analysis
+async def analyze():
+    result = await ora.analyze(
+        gene_list=["BRCA1", "TP53", "EGFR", "MYC"],
+        database=DatabaseType.KEGG,
+        species="human"
+    )
+    
+    for pathway in result.pathways[:5]:
+        print(f"{pathway.pathway_name}:")
+        print(f"  P-value: {pathway.p_value:.2e}")
+        print(f"  Odds Ratio: {pathway.odds_ratio:.2f}")
+        print(f"  95% CI: [{pathway.odds_ratio_ci_lower:.2f}, "
+              f"{pathway.odds_ratio_ci_upper:.2f}]")
+
+asyncio.run(analyze())
+```
+
+## Supported Data Types
+
+PathwayLens handles diverse genomics and proteomics datasets:
+
+| Data Type | Input Format | Analysis Type |
+|-----------|--------------|---------------|
+| Bulk RNA-seq | DESeq2, edgeR, limma output | ORA, GSEA |
+| Single-cell RNA-seq | Seurat, Scanpy markers | ORA, GSEA |
+| ATAC-seq | Peak-associated genes | ORA |
+| Proteomics | Differential protein lists | ORA, GSEA |
+| Multi-omics | Integrated gene lists | ORA, GSEA, Comparison |
+| Gene lists | TXT, CSV, TSV | All methods |
+
+**Supported File Formats**:
+- CSV, TSV, TXT (gene lists)
+- AnnData (.h5ad) for single-cell
+- 10X Genomics outputs
+- GMT/GCT pathway databases
+- DESeq2/edgeR/limma results tables
+
+## Key Features
+
+**Research-Grade Statistics**
+- Odds ratios with 95% confidence intervals (Wilson score method)
+- Effect sizes (Cohen's h)
+- Fold enrichment ratios
+- Statistical power estimation
+- P-value distribution diagnostics
+
+**Complete Reproducibility**
+- Analysis manifests with environment snapshots
+- Database version tracking with checksums
+- Input file verification (MD5)
+- Reproducibility hashes (SHA256)
+
+**Publication-Ready Outputs**
+- Structured directory organization
+- Auto-generated methods sections
+- BibTeX citations
+- High-resolution figures (SVG/PDF, 300+ DPI)
+- Colorblind-safe palettes
+
+## Analysis Methods
+
+- **ORA** (Over-Representation Analysis): Fast hypergeometric enrichment
+- **GSEA** (Gene Set Enrichment Analysis): Rank-based enrichment
+- **Consensus**: Combine multiple methods
+- **Comparison**: Compare enrichment across conditions
+- **Multi-Omics**: Integrated pathway analysis
+
+## Available Databases
+
+- KEGG: Metabolic and signaling pathways
+- Reactome: Biological reactions
+- GO: Gene Ontology (BP, MF, CC)
+- WikiPathways: Community pathways
+- BioCarta: Disease pathways
+
+## Output Structure
+
+```
+pathway_analysis_<timestamp>/
+├── manifest.json
+├── results/
+│   ├── <database>_enrichment.tsv
+│   ├── gene_pathway_mapping.tsv
+│   └── summary_statistics.json
+├── figures/
+│   └── diagnostic_plots.svg
+├── methods/
+│   ├── analysis_methods.txt
+│   └── citations.bib
+└── README.txt
+```
+
+## Documentation
+
+- Installation Guide: [INSTALL.md](INSTALL.md)
+- Contributing Guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Example Scripts: `examples/`
+- Sample Data: `data/examples/`
+
+## Validation
+
 ```bash
-pip install pathwaylens
-```
-**Includes:** Basic CLI, gene ID normalization, simple analysis tools
+# Validate installation
+python scripts/validation/validate_installation.py
 
-### 🔬 Full Installation (Recommended for researchers)
-```bash
-pip install pathwaylens[all]
-```
-**Includes:** All analysis tools, visualization, pathway databases, web API
-
-### 🔧 Feature-Specific Installation
-```bash
-pip install pathwaylens[analysis,viz,pathways]
-```
-**Includes:** Analysis tools, visualization, and pathway databases
-
-## 🧬 Features
-
-### ✅ Core Features (Always Included)
-- **Gene ID Normalization**: Convert between Entrez, Ensembl, Symbol, UniProt
-- **Basic Analysis**: Simple pathway enrichment and statistical tests
-- **Cross-Platform CLI**: Works on Windows, macOS, and Linux
-- **Rich Interface**: Beautiful command-line interface with progress bars
-
-### 🔬 Extended Features (Optional)
-- **Advanced Analysis**: Multi-omics integration, topology analysis, GSVA
-- **Visualization**: Interactive plots, network diagrams, dashboards
-- **Pathway Databases**: KEGG, Reactome, GO, WikiPathways
-- **Web Interface**: Next.js frontend with modern UI
-- **Background Jobs**: Celery-based job processing
-- **Database Support**: PostgreSQL with full schema
-
-## 🛠️ Development Installation
-
-### Option 1: Conda Environment (Recommended)
-
-```bash
-# Clone repository
-git clone https://github.com/pathwaylens/pathwaylens.git
-cd pathwaylens
-
-# Create conda environment (automated)
-bash scripts/setup/conda_setup.sh
-
-# Or manually:
-conda env create -f environment.yml
-conda activate pathwaylens
-pip install -e .
+# Run test suite
+pytest tests/
 ```
 
-See [docs/CONDA_SETUP.md](docs/CONDA_SETUP.md) for detailed conda setup instructions.
+## Citation
 
-### Option 2: pip with Virtual Environment
-
-```bash
-# Clone repository
-git clone https://github.com/pathwaylens/pathwaylens.git
-cd pathwaylens
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install in development mode
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Run system test
-python test_system.py
+```bibtex
+@software{pathwaylens2025,
+  title={PathwayLens: Research-Grade Pathway Enrichment Analysis},
+  author={PathwayLens Contributors},
+  year={2025},
+  url={https://github.com/VibhavSetlur/PathwayLens}
+}
 ```
 
-## 🐳 Docker Deployment
+## License
 
-```bash
-# Quick start with Docker Compose
-docker compose -f infra/docker/docker-compose.yml up -d
+MIT License - see [LICENSE](LICENSE)
 
-# Access web interface
-open http://localhost:3000
-```
+## Support
 
-## 📚 Documentation
-
-- **User Guide**: [docs/user-guide.md](docs/user-guide.md)
-- **API Documentation**: [docs/api.md](docs/api.md)
-- **Deployment Guide**: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
-- **Blueprint**: [PATHWAYLENS_2.0_UPGRADE_BLUEPRINT.md](PATHWAYLENS_2.0_UPGRADE_BLUEPRINT.md)
-
-## 🎯 Use Cases
-
-### 🔬 Bioinformatics Researchers
-```bash
-# Install full suite
-pip install pathwaylens[all]
-
-# Analyze RNA-seq data
-pathwaylens analyze enrichment --input deseq2_results.csv --databases kegg,reactome
-
-# Generate publication-ready plots
-pathwaylens visualize --input analysis_results.json --type enrichment_plot
-```
-
-### 📊 Data Scientists
-```bash
-# Install analysis tools
-pip install pathwaylens[analysis,viz]
-
-# Normalize gene identifiers
-pathwaylens normalize gene-ids --input genes.csv --species human
-
-# Perform multi-omics analysis
-pathwaylens analyze multi-omics --input rna.csv protein.csv --method integration
-```
-
-### 💻 Software Developers
-```bash
-# Install API components
-pip install pathwaylens[api,database,jobs]
-
-# Start web API
-pathwaylens api start --host 0.0.0.0 --port 8000
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-Built with ❤️ for the bioinformatics community using:
-- [Typer](https://typer.tiangolo.com/) for CLI
-- [FastAPI](https://fastapi.tiangolo.com/) for web API
-- [Next.js](https://nextjs.org/) for frontend
-- [Plotly](https://plotly.com/) for visualizations
-
----
-
-**PathwayLens 2.0** - Making pathway analysis accessible to everyone! 🧬
+- GitHub Issues: [Report bugs](https://github.com/VibhavSetlur/PathwayLens/issues)
+- Documentation: Complete guides in `docs/`

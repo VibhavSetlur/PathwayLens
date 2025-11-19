@@ -18,8 +18,8 @@ from dataclasses import dataclass
 class OddsRatioResult:
     """Result of odds ratio calculation."""
     odds_ratio: float
-    ci_lower: float
-    ci_upper: float
+    odds_ratio_ci_lower: float  # Fixed: was ci_lower
+    odds_ratio_ci_upper: float  # Fixed: was ci_upper
     standard_error: float
 
 
@@ -103,8 +103,8 @@ def calculate_odds_ratio(
     
     return OddsRatioResult(
         odds_ratio=odds_ratio,
-        ci_lower=ci_lower,
-        ci_upper=ci_upper,
+        odds_ratio_ci_lower=ci_lower,
+        odds_ratio_ci_upper=ci_upper,
         standard_error=se_log_or
     )
 
@@ -253,8 +253,8 @@ def calculate_enrichment_statistics(
     
     return EnrichmentStatistics(
         odds_ratio=or_result.odds_ratio,
-        odds_ratio_ci_lower=or_result.ci_lower,
-        odds_ratio_ci_upper=or_result.ci_upper,
+        odds_ratio_ci_lower=or_result.odds_ratio_ci_lower,
+        odds_ratio_ci_upper=or_result.odds_ratio_ci_upper,
         fold_enrichment=fold_enrichment,
         effect_size=effect_size,
         genes_expected=expected_genes,

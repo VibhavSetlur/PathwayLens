@@ -1,276 +1,183 @@
-# PathwayLens - Research-Grade Pathway Enrichment Analysis
+# PathwayLens
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Research-grade pathway enrichment analysis for bulk RNA-seq, single-cell RNA-seq, ATAC-seq, proteomics, and multi-omics datasets.
 
-> **Publication-ready pathway enrichment analysis with comprehensive statistical rigor, complete reproducibility, and automated manuscript generation.**
+## Installation
 
-## 🎯 Key Features
-
-### Research-Grade Statistics
-- **Odds Ratios** with 95% Wilson score confidence intervals
-- **Effect Sizes** (Cohen's h) for enrichment magnitude
-- **Statistical Power** estimation (post-hoc)
-- **Fold Enrichment** calculations
-- **Diagnostic Plots** for quality control
-
-### Complete Reproducibility
-- **Analysis Manifests** capturing all provenance
-- **Database Version** tracking with checksums
-- **Environment Snapshots** (Python, OS, dependencies)
-- **Reproducibility Hashes** for validation
-- **Random Seed Management** for deterministic execution
-
-### Publication-Ready Outputs
-- **Structured Directories** with organized results
-- **Auto-Generated Methods** sections for manuscripts
-- **BibTeX Citations** for all databases and tools
-- **TSV/CSV Exports** with full statistical metrics
-- **SVG/PDF Figures** for publication
-
-### Professional Visualizations
-- **Colorblind-Safe Palettes** (Wong, Tol, journal-specific)
-- **Diagnostic Plots** (p-value distributions, Q-Q plots, size bias)
-- **Publication Themes** (Nature, Science standards)
-- **High-Resolution Export** (300+ DPI)
-
-## 📦 Installation
-
-### Quick Install
 ```bash
 pip install pathwaylens
 ```
 
-### From Source
+See [INSTALL.md](INSTALL.md) for detailed instructions.
+
+## Quick Start
+
+### Command-Line Interface
+
 ```bash
-git clone https://github.com/yourusername/PathwayLens.git
-cd PathwayLens
-pip install -e .
+# Get help
+pathwaylens --help
+
+# Normalize gene identifiers
+pathwaylens normalize genes.txt --species human --target-type symbol
+
+# Over-representation analysis
+pathwaylens analyze ora \
+  --input gene_list.txt \
+  --databases kegg reactome \
+  --species human \
+  --output results/
+
+# Gene set enrichment analysis
+pathwaylens analyze gsea \
+  --input ranked_genes.txt \
+  --databases go \
+  --species human
+
+# Compare datasets
+pathwaylens compare dataset1.csv dataset2.csv \
+  --species human \
+  --output comparison/
 ```
 
-### Verify Installation
-```bash
-python validate_installation.py
-```
+### Python API
 
-## 🚀 Quick Start
-
-### Basic ORA Analysis
 ```python
+import asyncio
 from pathwaylens_core.analysis import ORAEngine
 from pathwaylens_core.data import DatabaseManager
 from pathwaylens_core.analysis.schemas import DatabaseType
 
 # Initialize
 db_manager = DatabaseManager()
-ora_engine = ORAEngine(db_manager)
+ora = ORAEngine(db_manager)
 
 # Run analysis
-result = await ora_engine.analyze(
-    gene_list=["BRCA1", "TP53", "EGFR", "MYC"],
-    database=DatabaseType.KEGG,
-    species="human",
-    significance_threshold=0.05
-)
+async def analyze():
+    result = await ora.analyze(
+        gene_list=["BRCA1", "TP53", "EGFR", "MYC"],
+        database=DatabaseType.KEGG,
+        species="human"
+    )
+    
+    for pathway in result.pathways[:5]:
+        print(f"{pathway.pathway_name}:")
+        print(f"  P-value: {pathway.p_value:.2e}")
+        print(f"  Odds Ratio: {pathway.odds_ratio:.2f}")
+        print(f"  95% CI: [{pathway.odds_ratio_ci_lower:.2f}, "
+              f"{pathway.odds_ratio_ci_upper:.2f}]")
 
-# Results include comprehensive statistics
-for pathway in result.pathways[:5]:
-    print(f"{pathway.pathway_name}:")
-    print(f"  P-value: {pathway.p_value:.2e}")
-    print(f"  Odds Ratio: {pathway.odds_ratio:.2f} "
-          f"(95% CI: {pathway.odds_ratio_ci_lower:.2f}-{pathway.odds_ratio_ci_upper:.2f})")
-    print(f"  Effect Size: {pathway.effect_size:.3f}")
-    print(f"  Statistical Power: {pathway.statistical_power:.2f}")
+asyncio.run(analyze())
 ```
 
-### Publication-Ready Workflow
-```python
-from pathwaylens_core.io import AnalysisOutputManager
-from pathwaylens_core.utils import generate_manifest
-from pathwaylens_core.visualization import create_diagnostic_panel
+## Supported Data Types
 
-# Create structured output
-output_mgr = AnalysisOutputManager(
-    base_dir="./results",
-    analysis_id="study_001"
-)
-output_mgr.create_directory_structure()
+PathwayLens handles diverse genomics and proteomics datasets:
 
-# Save results with all statistics
-output_mgr.save_results(result, format="tsv")
+| Data Type | Input Format | Analysis Type |
+|-----------|--------------|---------------|
+| Bulk RNA-seq | DESeq2, edgeR, limma output | ORA, GSEA |
+| Single-cell RNA-seq | Seurat, Scanpy markers | ORA, GSEA |
+| ATAC-seq | Peak-associated genes | ORA |
+| Proteomics | Differential protein lists | ORA, GSEA |
+| Multi-omics | Integrated gene lists | ORA, GSEA, Comparison |
+| Gene lists | TXT, CSV, TSV | All methods |
 
-# Generate manifest for reproducibility
-manifest = generate_manifest(
-    analysis_id="study_001",
-    analysis_type="ora",
-    parameters={"significance_threshold": 0.05},
-    input_files=["gene_list.txt"],
-    database_versions=db_versions
-)
-output_mgr.save_manifest(manifest)
+**Supported File Formats**:
+- CSV, TSV, TXT (gene lists)
+- AnnData (.h5ad) for single-cell
+- 10X Genomics outputs
+- GMT/GCT pathway databases
+- DESeq2/edgeR/limma results tables
 
-# Auto-generate methods section and citations
-output_mgr.save_methods_and_citations(
-    analysis_type="ora",
-    parameters={...},
-    databases=["KEGG", "Reactome"]
-)
+## Key Features
 
-# Create diagnostic plots
-diagnostic_fig = create_diagnostic_panel(result)
-output_mgr.save_figures({"diagnostics": diagnostic_fig}, format="svg")
+**Research-Grade Statistics**
+- Odds ratios with 95% confidence intervals (Wilson score method)
+- Effect sizes (Cohen's h)
+- Fold enrichment ratios
+- Statistical power estimation
+- P-value distribution diagnostics
+
+**Complete Reproducibility**
+- Analysis manifests with environment snapshots
+- Database version tracking with checksums
+- Input file verification (MD5)
+- Reproducibility hashes (SHA256)
+
+**Publication-Ready Outputs**
+- Structured directory organization
+- Auto-generated methods sections
+- BibTeX citations
+- High-resolution figures (SVG/PDF, 300+ DPI)
+- Colorblind-safe palettes
+
+## Analysis Methods
+
+- **ORA** (Over-Representation Analysis): Fast hypergeometric enrichment
+- **GSEA** (Gene Set Enrichment Analysis): Rank-based enrichment
+- **Consensus**: Combine multiple methods
+- **Comparison**: Compare enrichment across conditions
+- **Multi-Omics**: Integrated pathway analysis
+
+## Available Databases
+
+- KEGG: Metabolic and signaling pathways
+- Reactome: Biological reactions
+- GO: Gene Ontology (BP, MF, CC)
+- WikiPathways: Community pathways
+- BioCarta: Disease pathways
+
+## Output Structure
+
 ```
-
-**Output Directory**:
-```
-pathway_analysis_20250119_143022/
-├── manifest.json                    # Complete provenance
-├── README.txt                       # Directory guide
+pathway_analysis_<timestamp>/
+├── manifest.json
 ├── results/
-│   ├── KEGG_enrichment.tsv         # Significant pathways (with OR, CI, effect sizes)
-│   ├── KEGG_enrichment_full.tsv    # All tested pathways
-│   ├── KEGG_gene_pathway_mapping.tsv
+│   ├── <database>_enrichment.tsv
+│   ├── gene_pathway_mapping.tsv
 │   └── summary_statistics.json
 ├── figures/
-│   └── diagnostics.svg             # QC plots
+│   └── diagnostic_plots.svg
 ├── methods/
-│   ├── analysis_methods.txt        # Ready for manuscript
-│   └── citations.bib               # BibTeX citations
-└── diagnostics/
+│   ├── analysis_methods.txt
+│   └── citations.bib
+└── README.txt
 ```
 
-## 📊 Analysis Types
+## Documentation
 
-- **ORA** (Over-Representation Analysis) - Fast, hypergeometric test
-- **GSEA** (Gene Set Enrichment Analysis) - Rank-based enrichment
-- **Consensus** - Combine multiple methods
-- **Comparison** - Compare enrichment across conditions
-- **Multi-Omics** - Integrated analysis
+- Installation Guide: [INSTALL.md](INSTALL.md)
+- Contributing Guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Example Scripts: `examples/`
+- Sample Data: `data/examples/`
 
-## 🎨 Visualization Features
+## Validation
 
-### Colorblind-Safe Palettes
-```python
-from pathwaylens_core.visualization.palettes import ColorPalette
-
-# Get colorblind-safe palette
-colors = ColorPalette.get_colorblind_safe_palette(8)
-
-# Journal-specific palettes
-nature_colors = ColorPalette.get_publication_palette("nature")
-```
-
-### Diagnostic Plots
-```python
-from pathwaylens_core.visualization.diagnostic_plots import (
-    plot_pvalue_histogram,
-    plot_qq_plot,
-    create_diagnostic_panel
-)
-
-# Individual diagnostic plots
-pvalue_fig = plot_pvalue_histogram(pvalues)
-qq_fig = plot_qq_plot(pvalues)
-
-# Comprehensive 2x2 diagnostic panel
-panel = create_diagnostic_panel(result, output_path="diagnostics.svg")
-```
-
-## 🔬 Scientific Rigor
-
-### Statistical Methods
-- **Hypergeometric Test** for ORA
-- **Wilson Score Method** for confidence intervals
-- **Cohen's h** for effect sizes
-- **Spearman Correlation** for bias detection
-- **Kolmogorov-Smirnov** for p-value distribution testing
-
-### Quality Control
-- P-value distribution analysis
-- Pathway size bias detection
-- Gene coverage metrics
-- Multiple testing correction (11 methods available)
-- Statistical power estimation
-
-### References
-All statistical methods are properly cited with academic references in the auto-generated methods text.
-
-## 📚 Documentation
-
-- **Quick Start Guide**: Get started in 5 minutes
-- **API Reference**: Complete function documentation
-- **Tutorial Notebooks**: Step-by-step examples
-- **Statistical Methods**: Detailed methodology
-- **Best Practices**: Publication guidelines
-
-## 🧪 Testing
-
-Run the test suite:
 ```bash
-pytest tests/ -v
+# Validate installation
+python scripts/validation/validate_installation.py
+
+# Run test suite
+pytest tests/
 ```
 
-Validate installation:
-```bash
-python validate_installation.py
-```
-
-## 📋 Requirements
-
-- Python 3.8+
-- numpy >= 1.20.0
-- scipy >= 1.7.0
-- pandas >= 1.3.0
-- pydantic >= 2.0.0
-- plotly >= 5.15.0
-- psutil >= 5.8.0
-
-## 🤝 Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 📮 Citation
-
-If you use PathwayLens in your research, please cite:
+## Citation
 
 ```bibtex
 @software{pathwaylens2025,
   title={PathwayLens: Research-Grade Pathway Enrichment Analysis},
-  author={Your Name},
+  author={PathwayLens Contributors},
   year={2025},
-  url={https://github.com/yourusername/PathwayLens}
+  url={https://github.com/VibhavSetlur/PathwayLens}
 }
 ```
 
-## 🌟 Acknowledgments
+## License
 
-- Statistical methods based on established bioinformatics approaches
-- Colorblind-safe palettes from Wong (2011) and Tol (2021)
-- Database annotations from KEGG, Reactome, GO Consortium
+MIT License - see [LICENSE](LICENSE)
 
-## 📊 Comparison with Other Tools
+## Support
 
-| Feature | PathwayLens | DAVID | GOseq | clusterProfiler |
-|---------|-------------|-------|-------|-----------------|
-| Odds Ratios + CI | ✅ | ⚠️ | ⚠️ | ⚠️ |
-| Effect Sizes | ✅ | ❌ | ❌ | ❌ |
-| Statistical Power | ✅ | ❌ | ❌ | ❌ |
-| Complete Provenance | ✅ | ❌ | ❌ | ❌ |
-| Auto Methods Text | ✅ | ❌ | ❌ | ❌ |
-| Diagnostic Plots | ✅ | ⚠️ | ⚠️ | ✅ |
-| Colorblind-Safe | ✅ | ❌ | ❌ | ⚠️ |
-
-## 🔗 Links
-
-- **Documentation**: [docs.pathwaylens.org](https://docs.pathwaylens.org)
-- **GitHub**: [github.com/yourusername/PathwayLens](https://github.com/yourusername/PathwayLens)
-- **Issues**: [github.com/yourusername/PathwayLens/issues](https://github.com/yourusername/PathwayLens/issues)
-- **PyPI**: [pypi.org/project/pathwaylens](https://pypi.org/project/pathwaylens)
-
----
-
-**Made with ❤️ for researchers, by researchers.**
+- GitHub Issues: [Report bugs](https://github.com/VibhavSetlur/PathwayLens/issues)
+- Documentation: Complete guides in `docs/`
