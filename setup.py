@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Setup script for PathwayLens 2.0
+Setup script for PathwayLens 1.0
 """
 
 from setuptools import setup, find_packages
 
 setup(
     name="pathwaylens",
-    version="2.0.0",
+    version="1.0.0",
     description="Next-generation computational biology platform for multi-omics pathway analysis",
     author="PathwayLens Team",
     author_email="pathwaylens@example.com",
@@ -61,7 +61,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'pathwaylens=pathwaylens_cli.main:app',
+            'pathwaylens=pathwaylens_cli.main:cli_entry',
         ],
     },
     classifiers=[

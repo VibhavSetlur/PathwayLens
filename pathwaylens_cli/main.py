@@ -94,8 +94,12 @@ def main(
     
     if version:
         console = Console()
-        console.print("PathwayLens v2.0.0")
+        console.print("PathwayLens v1.0.0")
         raise typer.Exit(code=0)
+
+def cli_entry():
+    """Entry point for console script."""
+    app()
 
 if __name__ == "__main__":
     app()

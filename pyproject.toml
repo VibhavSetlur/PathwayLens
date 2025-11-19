@@ -1,6 +1,6 @@
 [project]
 name = "pathwaylens"
-version = "2.0.0"
+version = "1.0.0"
 description = "Next-generation computational biology platform for multi-omics pathway analysis"
 authors = [
     {name = "PathwayLens Team", email = "pathwaylens@example.com"}

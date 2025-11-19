@@ -1,10 +1,10 @@
-# PathwayLens 2.0 Makefile
+# PathwayLens 1.0 Makefile
 
 .PHONY: help install install-dev test test-unit test-integration test-e2e test-coverage lint format type-check clean build docker-build docker-run docs
 
 # Default target
 help:
-	@echo "PathwayLens 2.0 Development Commands"
+	@echo "PathwayLens 1.0 Development Commands"
 	@echo "===================================="
 	@echo ""
 	@echo "Installation:"

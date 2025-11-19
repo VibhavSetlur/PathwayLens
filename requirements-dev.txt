@@ -1,4 +1,4 @@
-# PathwayLens 2.0 - Development Dependencies
+# PathwayLens 1.0 - Development Dependencies
 # ============================================
 # Install with: pip install -r requirements-dev.txt
 # Or use: pip install -e ".[dev]"

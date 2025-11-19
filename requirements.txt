@@ -1,4 +1,4 @@
-# PathwayLens 2.0 - Comprehensive Requirements
+# PathwayLens 1.0 - Comprehensive Requirements
 # =============================================
 # This file contains all dependencies needed for PathwayLens
 # For development, install with: pip install -r requirements.txt
