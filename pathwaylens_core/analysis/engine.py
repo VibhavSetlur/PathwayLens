@@ -22,6 +22,10 @@ from .topology_engine import TopologyEngine
 from .multi_omics_engine import MultiOmicsEngine
 from .consensus_engine import ConsensusEngine
 from ..data import DatabaseManager
+from ..visualization.comparison import ComparisonVisualizer
+from ..visualization.network_renderer import NetworkRenderer
+from ..reporting.html_report import HTMLReportGenerator
+import json
 
 
 class AnalysisEngine:
@@ -43,7 +47,12 @@ class AnalysisEngine:
         self.consensus_engine = ConsensusEngine()
         self.gsva_engine = GSVAEngine(self.database_manager)
         self.topology_engine = TopologyEngine(self.database_manager)
+        self.topology_engine = TopologyEngine(self.database_manager)
         self.multi_omics_engine = MultiOmicsEngine(self.database_manager)
+        
+        # Initialize reporting and visualization
+        self.html_generator = HTMLReportGenerator()
+        self.network_renderer = NetworkRenderer()
     
     async def analyze(
         self,
@@ -70,7 +79,23 @@ class AnalysisEngine:
         input_info = {}  # Initialize input_info early
         try:
             # Step 1: Prepare input data
-            gene_list, input_info = await self._prepare_input_data(input_data)
+            gene_list, input_info, gene_stats = await self._prepare_input_data(input_data, parameters.tool)
+            
+            # Filter by LFC if stats available
+            if parameters.lfc_threshold > 0 and gene_stats:
+                filtered_genes = []
+                for gene in gene_list:
+                    stats = gene_stats.get(gene)
+                    if stats and 'logFC' in stats:
+                        if abs(stats['logFC']) >= parameters.lfc_threshold:
+                            filtered_genes.append(gene)
+                    else:
+                        # Keep genes without stats
+                        filtered_genes.append(gene)
+                
+                if len(filtered_genes) < len(gene_list):
+                    self.logger.info(f"Filtered {len(gene_list) - len(filtered_genes)} genes by LFC threshold {parameters.lfc_threshold}")
+                    gene_list = filtered_genes
             
             # Step 2: Validate parameters
             self._validate_parameters(parameters, gene_list)
@@ -106,7 +131,7 @@ class AnalysisEngine:
             if output_dir:
                 output_files = await self._generate_output_files(
                     job_id, database_results, consensus_results, 
-                    parameters, output_dir
+                    parameters, output_dir, gene_stats
                 )
             
             # Step 7: Create analysis result
@@ -215,19 +240,42 @@ class AnalysisEngine:
     
     async def _prepare_input_data(
         self, 
-        input_data: Union[str, pd.DataFrame, List[str]]
-    ) -> tuple[List[str], Dict[str, Any]]:
+        input_data: Union[str, pd.DataFrame, List[str]],
+        tool: str = "auto"
+    ) -> tuple[List[str], Dict[str, Any], Dict[str, Dict[str, float]]]:
         """Prepare input data for analysis."""
         input_info = {}
+        gene_stats = {} # gene -> {logFC, pval, etc}
         
         if isinstance(input_data, str):
             # File path
-            input_info['file_path'] = input_data
-            df = pd.read_csv(input_data)
-            gene_list = self._extract_gene_list(df)
+            input_path = Path(input_data)
+            if not input_path.exists():
+                raise FileNotFoundError(f"Input file not found: {input_path}")
+            
+            input_info['file_path'] = str(input_path)
+            
+            # Try to read the file - detect separator
+            try:
+                # First, try to detect if it's tab-separated
+                with open(input_path, 'r') as f:
+                    first_line = f.readline()
+                    if '\t' in first_line and ',' not in first_line:
+                        # Tab-separated
+                        df = pd.read_csv(input_path, sep='\t')
+                    else:
+                        # Comma-separated or auto-detect
+                        df = pd.read_csv(input_path)
+            except Exception as e:
+                self.logger.error(f"Failed to read input file: {e}")
+                raise ValueError(f"Could not read input file: {input_path}")
+            
+            gene_list = self._parse_tool_output(df, tool)
+            gene_stats = self._extract_gene_stats(df)
         elif isinstance(input_data, pd.DataFrame):
             # DataFrame
-            gene_list = self._extract_gene_list(input_data)
+            gene_list = self._parse_tool_output(input_data, tool)
+            gene_stats = self._extract_gene_stats(input_data)
         elif isinstance(input_data, list):
             # Gene list
             gene_list = input_data
@@ -238,7 +286,116 @@ class AnalysisEngine:
             raise ValueError("No genes found in input data")
         
         self.logger.info(f"Prepared {len(gene_list)} genes for analysis")
-        return gene_list, input_info
+        return gene_list, input_info, gene_stats
+
+    def _parse_tool_output(self, df: pd.DataFrame, tool: str) -> List[str]:
+        """Parse output from specific tools."""
+        tool = tool.lower()
+        
+        if tool == "auto":
+            tool = self._detect_tool_format(df)
+            self.logger.info(f"Auto-detected tool format: {tool}")
+            
+        if tool == "deseq2":
+            # Look for gene names in index or specific columns
+            # DESeq2 usually has gene IDs as index
+            if df.index.name in ['gene', 'gene_id', 'id'] or (df.index.dtype == 'object' and self._looks_like_gene_ids(df.index.to_series())):
+                return df.index.tolist()
+            # Or look for columns
+            return self._extract_gene_list(df)
+            
+        elif tool == "limma":
+            # Limma often has 'ID' or 'Symbol'
+            if 'ID' in df.columns:
+                return df['ID'].tolist()
+            if 'Symbol' in df.columns:
+                return df['Symbol'].tolist()
+            return self._extract_gene_list(df)
+            
+        elif tool.lower() == 'maxquant':
+            # MaxQuant protein groups - the df is already loaded
+            # MaxQuant uses 'Gene names' column
+            if 'Gene names' in df.columns:
+                genes = df['Gene names'].dropna().astype(str).tolist()
+                # Split multiple gene names (semicolon-separated)
+                all_genes = []
+                for gene_str in genes:
+                    if gene_str and gene_str != 'nan':
+                        all_genes.extend([g.strip() for g in gene_str.split(';') if g.strip()])
+                return list(set(all_genes))  # Remove duplicates
+            elif 'gene' in df.columns:
+                return df['gene'].dropna().astype(str).tolist()
+            else:
+                self.logger.warning(f"Could not find gene column in MaxQuant file. Columns: {df.columns.tolist()}")
+                return self._extract_gene_list(df)
+            
+        elif tool == "edger":
+            # EdgeR often has gene IDs as index
+            if df.index.dtype == 'object':
+                return df.index.tolist()
+            return self._extract_gene_list(df)
+            
+        elif tool == "maxquant":
+            # MaxQuant 'Gene names' column
+            if 'Gene names' in df.columns:
+                # MaxQuant can have multiple genes separated by semicolon
+                genes = []
+                for g in df['Gene names'].dropna():
+                    genes.extend(g.split(';'))
+                return list(set(genes))
+            return self._extract_gene_list(df)
+            
+        else:
+            # Fallback to generic extraction
+            return self._extract_gene_list(df)
+
+    def _extract_gene_stats(self, df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+        """Extract statistics (logFC, p-value) for genes."""
+        stats = {}
+        
+        # Identify columns
+        logfc_col = next((c for c in df.columns if c.lower() in ['log2foldchange', 'logfc', 'log2fc']), None)
+        pval_col = next((c for c in df.columns if c.lower() in ['pvalue', 'p.value', 'pval', 'p_value']), None)
+        padj_col = next((c for c in df.columns if c.lower() in ['padj', 'adj.p.val', 'fdr', 'qvalue']), None)
+        
+        # Identify gene column (or index)
+        gene_col = None
+        for col in df.columns:
+            if df[col].dtype == 'object' and self._looks_like_gene_ids(df[col].dropna().head(100)):
+                gene_col = col
+                break
+        
+        # Iterate and populate
+        try:
+            for idx, row in df.iterrows():
+                gene = row[gene_col] if gene_col else (idx if isinstance(idx, str) else str(idx))
+                
+                gene_stat = {}
+                if logfc_col: gene_stat['logFC'] = float(row[logfc_col])
+                if pval_col: gene_stat['p_value'] = float(row[pval_col])
+                if padj_col: gene_stat['adj_p_value'] = float(row[padj_col])
+                
+                if gene_stat:
+                    stats[str(gene)] = gene_stat
+        except Exception as e:
+            self.logger.warning(f"Failed to extract gene stats: {e}")
+            
+        return stats
+
+    def _detect_tool_format(self, df: pd.DataFrame) -> str:
+        """Detect tool format based on columns."""
+        cols = set(df.columns)
+        
+        if {'baseMean', 'log2FoldChange', 'padj'}.issubset(cols):
+            return "deseq2"
+        if {'logFC', 'AveExpr', 'P.Value', 'adj.P.Val'}.issubset(cols):
+            return "limma"
+        if {'logFC', 'logCPM', 'PValue', 'FDR'}.issubset(cols):
+            return "edger"
+        if 'Gene names' in cols and 'Protein IDs' in cols:
+            return "maxquant"
+            
+        return "generic"
     
     def _extract_gene_list(self, df: pd.DataFrame) -> List[str]:
         """Extract gene list from DataFrame."""
@@ -253,19 +410,28 @@ class AnalysisEngine:
                     gene_list = df[col].dropna().unique().tolist()
                     break
         
+        # If no column found, check index
+        if not gene_list and df.index.dtype == 'object':
+             sample_values = df.index.to_series().dropna().head(100)
+             if self._looks_like_gene_ids(sample_values):
+                 gene_list = df.index.unique().tolist()
+        
         return gene_list
     
     def _looks_like_gene_ids(self, values: pd.Series) -> bool:
         """Check if values look like gene identifiers."""
+        if len(values) == 0:
+            return False
+            
         # Check for common gene ID patterns
         patterns = [
-            r'^[A-Za-z][A-Za-z0-9]*$',  # Gene symbols
-            r'^ENS[A-Z]*G\d{11}$',      # Ensembl IDs
-            r'^\d+$'                    # Entrez IDs
+            r'^[A-Za-z][A-Za-z0-9\-\.]*$',  # Gene symbols (allow dots/dashes)
+            r'^ENS[A-Z]*G\d{11}(\.\d+)?$',  # Ensembl IDs (allow version)
+            r'^\d+$'                        # Entrez IDs
         ]
         
         for pattern in patterns:
-            matches = values.str.match(pattern).sum()
+            matches = values.astype(str).str.match(pattern).sum()
             if matches / len(values) >= 0.8:
                 return True
         
@@ -293,33 +459,43 @@ class AnalysisEngine:
         """Perform ORA analysis."""
         database_results = {}
         
+        # Create tasks for concurrent execution
+        tasks = []
         for database in parameters.databases:
-            self.logger.info(f"Performing ORA analysis with {database.value}")
+            self.logger.info(f"Scheduling ORA analysis with {database.value}")
+            task = self.ora_engine.analyze(
+                gene_list=gene_list,
+                database=database,
+                species=parameters.species,
+                significance_threshold=parameters.significance_threshold,
+                correction_method=parameters.correction_method,
+                min_pathway_size=parameters.min_pathway_size,
+                max_pathway_size=parameters.max_pathway_size,
+                background_genes=parameters.custom_background,
+                background_size=parameters.background_size
+            )
+            tasks.append(task)
             
-            try:
-                result = await self.ora_engine.analyze(
-                    gene_list=gene_list,
-                    database=database,
-                    species=parameters.species,
-                    significance_threshold=parameters.significance_threshold,
-                    correction_method=parameters.correction_method,
-                    min_pathway_size=parameters.min_pathway_size,
-                    max_pathway_size=parameters.max_pathway_size
-                )
-                
-                database_results[database.value] = result
-                
-            except Exception as e:
-                self.logger.error(f"ORA analysis failed for {database.value}: {e}")
-                # Create empty result
+        # Run all tasks concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for database, result in zip(parameters.databases, results):
+            if isinstance(result, Exception):
+                self.logger.error(f"Analysis failed for {database.value}: {result}")
+                # Create empty result with error metadata
                 database_results[database.value] = DatabaseResult(
                     database=database,
                     total_pathways=0,
                     significant_pathways=0,
                     pathways=[],
                     species=parameters.species,
-                    coverage=0.0
+                    coverage=0.0,
+                    metadata={"error": str(result)}
                 )
+                continue
+                
+            database_results[database.value] = result
         
         return database_results
 
@@ -517,22 +693,181 @@ class AnalysisEngine:
         database_results: Dict[str, DatabaseResult],
         consensus_results: Optional[ConsensusResult],
         parameters: AnalysisParameters,
-        output_dir: str
+        output_dir: str,
+        gene_stats: Dict[str, Dict[str, float]] = None
     ) -> Dict[str, str]:
-        """Generate output files."""
+        """Generate output files with proper directory structure."""
         output_files = {}
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
-        # Generate JSON output
-        json_file = output_path / f"{job_id}_results.json"
-        # TODO: Implement JSON export
+        # Create directory structure
+        # my_analysis/
+        # ├── run.json
+        # ├── kegg/
+        # │   ├── enrichment_results.tsv
+        # │   ├── gene_pathway_mapping.tsv
+        # │   └── visualizations/
+        # ├── reactome/
+        # └── summary/
+        #     └── combined_results.tsv
+        
+        # 1. Generate per-database results
+        for db_name, result in database_results.items():
+            db_dir = output_path / db_name
+            db_dir.mkdir(exist_ok=True)
+            
+            # Create visualizations subdirectory
+            viz_dir = db_dir / "visualizations"
+            viz_dir.mkdir(exist_ok=True)
+            
+            # Enrichment results TSV
+            if result.pathways:
+                enrichment_data = []
+                for pathway in result.pathways:
+                    enrichment_data.append({
+                        'pathway_id': pathway.pathway_id,
+                        'pathway_name': pathway.pathway_name,
+                        'p_value': pathway.p_value,
+                        'adjusted_p_value': pathway.adjusted_p_value,
+                        'overlap_count': pathway.overlap_count,
+                        'pathway_count': pathway.pathway_count,
+                        'input_count': pathway.input_count,
+                        'fold_enrichment': pathway.fold_enrichment,
+                        'overlapping_genes': ','.join(pathway.overlapping_genes) if pathway.overlapping_genes else ''
+                    })
+                
+                df_enrich = pd.DataFrame(enrichment_data)
+                enrich_file = db_dir / "enrichment_results.tsv"
+                df_enrich.to_csv(enrich_file, sep='\t', index=False)
+                output_files[f'{db_name}_enrichment'] = str(enrich_file)
+                
+                # Gene-pathway mapping TSV
+                gene_pathway_data = []
+                for pathway in result.pathways:
+                    for gene in pathway.overlapping_genes:
+                        gene_pathway_data.append({
+                            'gene': gene,
+                            'pathway_id': pathway.pathway_id,
+                            'pathway_name': pathway.pathway_name,
+                            'p_value': pathway.adjusted_p_value
+                        })
+                        
+                        # Add stats if available
+                        if gene_stats and gene in gene_stats:
+                            gene_pathway_data[-1].update(gene_stats[gene])
+                
+                if gene_pathway_data:
+                    df_mapping = pd.DataFrame(gene_pathway_data)
+                    mapping_file = db_dir / "gene_pathway_mapping.tsv"
+                    df_mapping.to_csv(mapping_file, sep='\t', index=False)
+                    output_files[f'{db_name}_mapping'] = str(mapping_file)
+        
+        # 2. Generate summary directory
+        summary_dir = output_path / "summary"
+        summary_dir.mkdir(exist_ok=True)
+        
+        # Combined results across all databases
+        combined_data = []
+        for db_name, result in database_results.items():
+            for pathway in result.pathways:
+                combined_data.append({
+                    'database': db_name,
+                    'pathway_id': pathway.pathway_id,
+                    'pathway_name': pathway.pathway_name,
+                    'p_value': pathway.p_value,
+                    'adjusted_p_value': pathway.adjusted_p_value,
+                    'overlap_count': pathway.overlap_count,
+                    'pathway_count': pathway.pathway_count,
+                    'fold_enrichment': pathway.fold_enrichment
+                })
+        
+        if combined_data:
+            df_combined = pd.DataFrame(combined_data)
+            combined_file = summary_dir / "combined_results.tsv"
+            df_combined.to_csv(combined_file, sep='\t', index=False)
+            output_files['combined_results'] = str(combined_file)
+        
+        # 3. Generate visualizations
+        if parameters.include_plots:
+            visualizer = ComparisonVisualizer(str(summary_dir))
+            
+            # Database comparison
+            db_comp_file = visualizer.plot_database_comparison(database_results)
+            if db_comp_file:
+                output_files['database_comparison_plot'] = db_comp_file
+                
+            # Pathway overlap (if multiple databases)
+            if len(database_results) > 1:
+                overlap_file = visualizer.plot_pathway_overlap(database_results)
+                if overlap_file:
+                    output_files['pathway_overlap_plot'] = overlap_file
+                    
+                consistency_file = visualizer.plot_enrichment_consistency(database_results)
+                if consistency_file:
+                    output_files['enrichment_consistency_plot'] = consistency_file
+        
+        # 4. Generate run.json at root
+        run_data = {
+            "run_name": parameters.model_dump().get('run_name', job_id),
+            "timestamp": datetime.now().isoformat(),
+            "parameters": parameters.model_dump(),
+            "results": {
+                db: result.model_dump() for db, result in database_results.items()
+            },
+            "database_comparison": {
+                "total_pathways": sum(r.total_pathways for r in database_results.values()),
+                "significant_pathways": sum(r.significant_pathways for r in database_results.values()),
+                "databases_analyzed": list(database_results.keys()),
+                "agreement_score": consensus_results.consensus_score if consensus_results else None
+            }
+        }
+        
+        json_file = output_path / "run.json"
+        with open(json_file, 'w') as f:
+            json.dump(run_data, f, indent=2, default=str)
         output_files['json'] = str(json_file)
         
-        # Generate CSV output
-        csv_file = output_path / f"{job_id}_results.csv"
-        # TODO: Implement CSV export
-        output_files['csv'] = str(csv_file)
+        # Save as analysis_metadata.json for reproducibility
+        metadata_file = output_path / "analysis_metadata.json"
+        with open(metadata_file, 'w') as f:
+            json.dump(run_data, f, indent=2, default=str)
+        output_files['metadata'] = str(metadata_file)
+        
+        # 6. Generate HTML Report
+        html_file = output_path / "report.html"
+        
+        # Generate plots for report
+        report_plots = {}
+        if parameters.include_networks and database_results:
+            # Generate Enrichment Map
+            for db_name, result in database_results.items():
+                if result.pathways:
+                    network_data = self.network_renderer.create_enrichment_map(
+                        result.pathways,
+                        title=f"Enrichment Map - {db_name}"
+                    )
+                    if network_data:
+                        fig = self.network_renderer.create_interactive_network_plot(network_data)
+                        report_plots[f"Enrichment Map ({db_name})"] = fig.to_html(full_html=False, include_plotlyjs='cdn')
+                        
+                        # Save standalone map
+                        map_file = output_path / db_name / "visualizations" / "enrichment_map.html"
+                        fig.write_html(str(map_file))
+                        output_files[f'{db_name}_enrichment_map'] = str(map_file)
+
+        self.html_generator.generate_report(
+            analysis_result=run_data,
+            output_file=str(html_file),
+            plots=report_plots
+        )
+        output_files['html_report'] = str(html_file)
+        
+        # 7. Legacy results.csv for backwards compatibility
+        if combined_data:
+            csv_file = output_path / "results.csv"
+            df_combined.to_csv(csv_file, index=False)
+            output_files['csv'] = str(csv_file)
         
         return output_files
     

@@ -48,16 +48,16 @@ Perform pathway enrichment analysis on your gene list:
 
 ```bash
 # Basic ORA analysis
-pathwaylens analyze tests/data/input_data/gene_list.txt \
+pathwaylens analyze ora \
+  --input tests/data/input_data/gene_list.txt \
   --databases kegg,reactome,go \
   --species human \
   --output-dir analysis_results
 
 # GSEA analysis with custom parameters
-pathwaylens analyze tests/data/input_data/ranked_genes.csv \
-  --analysis-type gsea \
+pathwaylens analyze gsea \
+  --input tests/data/input_data/ranked_genes.csv \
   --databases kegg,reactome \
-  --significance-threshold 0.01 \
   --output-dir gsea_results
 ```
 
@@ -67,14 +67,24 @@ Compare multiple datasets:
 
 ```bash
 # Compare two gene lists
-pathwaylens compare tests/data/input_data/gene_list.txt tests/data/input_data/mouse_genes.csv \
-  --comparison-type gene_overlap \
-  --species human \
+pathwaylens compare \
+  --inputs tests/data/input_data/gene_list.txt \
+  --inputs tests/data/input_data/mouse_genes.csv \
+  --mode genes \
+  --omic-type transcriptomics \
+  --data-type bulk \
   --output-dir comparison_results
 
-# Compare analysis results
-pathwaylens compare analysis_results/ gsea_results/ \
-  --comparison-type pathway_concordance
+# Compare analysis results (pathways)
+pathwaylens compare \
+  --inputs analysis_results/run.json \
+  --inputs gsea_results/run.json \
+  --mode pathways \
+  --omic-type transcriptomics \
+  --data-type bulk \
+  --databases kegg \
+  --species human \
+  --output-dir comparison_results
 ```
 
 ### 5. Generate Visualizations
@@ -133,11 +143,16 @@ pathwaylens normalize batch tests/data/input_data/ \
   --species human \
   --target-type ensembl
 
-# Batch analyze files
-pathwaylens analyze batch tests/data/input_data/ \
-  --pattern "*.txt" \
-  --databases kegg,reactome,go \
-  --output-dir batch_results
+# Batch analyze files (Note: batch mode not yet implemented)
+# Use shell loop instead:
+for file in tests/data/input_data/*.txt; do
+  pathwaylens analyze ora --input "$file" \
+    --databases kegg,reactome,go \
+    --omic-type transcriptomics \
+    --data-type bulk \
+    --species human \
+    --output-dir "batch_results/$(basename "$file" .txt)"
+done
 ```
 
 ## Advanced Usage
@@ -146,19 +161,25 @@ pathwaylens analyze batch tests/data/input_data/ \
 
 ```bash
 # Advanced ORA analysis
-pathwaylens analyze genes.csv \
+pathwaylens analyze ora \
+  --input genes.csv \
   --databases kegg,reactome,go,msigdb \
-  --significance-threshold 0.001 \
-  --min-pathway-size 10 \
-  --max-pathway-size 200 \
-  --correction-method fdr_bh
+  --omic-type transcriptomics \
+  --data-type bulk \
+  --species human \
+  --fdr-threshold 0.001 \
+  --min-genes 10 \
+  --max-genes 200 \
+  --output-dir advanced_ora
 
 # Advanced GSEA analysis
-pathwaylens analyze ranked_genes.csv \
-  --analysis-type gsea \
-  --gsea-permutations 2000 \
-  --gsea-min-size 20 \
-  --gsea-max-size 300
+pathwaylens analyze gsea \
+  --input ranked_genes.csv \
+  --databases kegg,reactome \
+  --omic-type transcriptomics \
+  --data-type bulk \
+  --species human \
+  --output-dir advanced_gsea
 ```
 
 ### Cross-Species Analysis
@@ -170,11 +191,14 @@ pathwaylens normalize mouse_genes.csv \
   --target-species human \
   --target-type symbol
 
-# Analyze with cross-species mapping
-pathwaylens analyze mouse_genes.csv \
+# Analyze mouse genes
+pathwaylens analyze ora \
+  --input mouse_genes.csv \
   --species mouse \
-  --target-species human \
-  --databases kegg,reactome
+  --databases kegg,reactome \
+  --omic-type transcriptomics \
+  --data-type bulk \
+  --output-dir mouse_analysis
 ```
 
 ## Output Files

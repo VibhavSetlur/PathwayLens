@@ -28,9 +28,13 @@ pathwaylens_cli/utils/config.py
 pathwaylens_cli/utils/exceptions.py
 pathwaylens_cli/utils/pipeline.py
 pathwaylens_core/__init__.py
+pathwaylens_core/config.py
 pathwaylens_core/exceptions.py
+pathwaylens_core/species.py
+pathwaylens_core/types.py
 pathwaylens_core/analysis/__init__.py
 pathwaylens_core/analysis/bayesian_engine.py
+pathwaylens_core/analysis/comparison_engine.py
 pathwaylens_core/analysis/consensus_engine.py
 pathwaylens_core/analysis/diagnostics.py
 pathwaylens_core/analysis/engine.py
@@ -148,6 +152,7 @@ pathwaylens_core/utils/provenance.py
 pathwaylens_core/utils/reproducibility.py
 pathwaylens_core/utils/streaming.py
 pathwaylens_core/visualization/__init__.py
+pathwaylens_core/visualization/comparison.py
 pathwaylens_core/visualization/dashboard_builder.py
 pathwaylens_core/visualization/diagnostic_plots.py
 pathwaylens_core/visualization/engine.py

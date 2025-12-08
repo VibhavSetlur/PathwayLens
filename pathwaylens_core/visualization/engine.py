@@ -24,6 +24,7 @@ from ..analysis.schemas import AnalysisResult
 from ..comparison.schemas import ComparisonResult
 from .plotly_renderer import PlotlyRenderer
 from .multi_omics_visualizer import MultiOmicsVisualizer
+from .themes import ThemeManager
 
 
 class VisualizationEngine:
@@ -34,6 +35,7 @@ class VisualizationEngine:
         self.logger = logger.bind(module="visualization_engine")
         self.renderer = PlotlyRenderer()
         self.multi_omics_visualizer = MultiOmicsVisualizer()
+        self.theme_manager = ThemeManager()
         self.plot_renderers = {
             PlotType.DOT_PLOT: self._create_dot_plot,
             PlotType.VOLCANO_PLOT: self._create_volcano_plot,
@@ -207,31 +209,41 @@ class VisualizationEngine:
         # Generate plot
         fig = await renderer(data, parameters)
         
-        # Save plot
-        filename = f"{plot_type.value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Apply theme
+        if parameters.theme:
+            fig = self.theme_manager.apply_plotly_theme(fig, parameters.theme)
         
-        if parameters.interactive:
-            if parameters.output_format == "html":
-                plot_file = output_path / f"{filename}.html"
+        # Save plot
+        # Save plot
+        filename_base = f"{plot_type.value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        generated_files = []
+        
+        for fmt in parameters.output_formats:
+            fmt = fmt.lower()
+            plot_file = output_path / f"{filename_base}.{fmt}"
+            
+            if fmt == "html":
                 fig.write_html(str(plot_file))
-            else:
-                # Convert to static format
-                plot_file = output_path / f"{filename}.png"
-                fig.write_image(str(plot_file), width=parameters.figure_size[0], height=parameters.figure_size[1])
-        else:
-            # Static plot
-            if parameters.output_format == "png":
-                plot_file = output_path / f"{filename}.png"
-                fig.write_image(str(plot_file), width=parameters.figure_size[0], height=parameters.figure_size[1])
-            elif parameters.output_format == "svg":
-                plot_file = output_path / f"{filename}.svg"
-                fig.write_image(str(plot_file), width=parameters.figure_size[0], height=parameters.figure_size[1])
-            elif parameters.output_format == "pdf":
-                plot_file = output_path / f"{filename}.pdf"
-                fig.write_image(str(plot_file), width=parameters.figure_size[0], height=parameters.figure_size[1])
-            else:
-                plot_file = output_path / f"{filename}.html"
-                fig.write_html(str(plot_file))
+            elif fmt in ["png", "jpg", "jpeg", "webp"]:
+                # High-res raster
+                fig.write_image(
+                    str(plot_file), 
+                    width=parameters.figure_size[0], 
+                    height=parameters.figure_size[1],
+                    scale=3  # 3x scale for high DPI (approx 300 DPI)
+                )
+            elif fmt in ["svg", "pdf", "eps"]:
+                # Vector formats
+                fig.write_image(
+                    str(plot_file), 
+                    width=parameters.figure_size[0], 
+                    height=parameters.figure_size[1]
+                )
+            
+            generated_files.append(str(plot_file))
+            
+        # Use the first generated file as the primary one for metadata
+        plot_file = generated_files[0] if generated_files else ""
         
         # Create metadata
         metadata = PlotMetadata(
@@ -247,7 +259,7 @@ class VisualizationEngine:
             color_scheme=parameters.color_scheme,
             figure_size=parameters.figure_size,
             interactive=parameters.interactive,
-            output_format=parameters.output_format,
+            output_formats=parameters.output_formats,
             file_size=Path(plot_file).stat().st_size if Path(plot_file).exists() else 0,
             created_at=datetime.now().isoformat(),
             processing_time=0.0
@@ -295,8 +307,7 @@ class VisualizationEngine:
                     color=colors[i],
                     opacity=0.7,
                     sizemode='diameter',
-                    sizemin=5,
-                    sizemax=50
+                    sizemin=5
                 ),
                 text=db_data.apply(lambda row: f"P-value: {row['adjusted_p_value']:.2e}<br>"
                                              f"Overlap: {row['overlap_count']}/{row['pathway_count']}<br>"
@@ -310,8 +321,7 @@ class VisualizationEngine:
             xaxis_title="Number of Overlapping Genes",
             yaxis_title="Pathway",
             showlegend=True,
-            height=max(400, len(df) * 20),
-            template=parameters.theme
+            height=max(400, len(df) * 20)
         )
         
         return fig
@@ -384,7 +394,6 @@ class VisualizationEngine:
             title="Volcano Plot - Pathway Enrichment",
             xaxis_title="Log2 Fold Enrichment",
             yaxis_title="-Log10 Adjusted P-value",
-            template=parameters.theme,
             height=600
         )
         
@@ -432,7 +441,6 @@ class VisualizationEngine:
             title="Pathway Enrichment Heatmap",
             xaxis_title="Database",
             yaxis_title="Pathway",
-            template=parameters.theme,
             height=max(400, len(heatmap_data) * 20)
         )
         
@@ -503,7 +511,6 @@ class VisualizationEngine:
             title="Pathway Network",
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            template=parameters.theme,
             height=600
         )
         
@@ -550,7 +557,6 @@ class VisualizationEngine:
             title="Pathway Enrichment Bar Chart",
             xaxis_title="Enrichment Score",
             yaxis_title="Pathway",
-            template=parameters.theme,
             height=max(400, len(df) * 30)
         )
         
@@ -601,7 +607,6 @@ class VisualizationEngine:
             title="Pathway Enrichment Scatter Plot",
             xaxis_title="Number of Overlapping Genes",
             yaxis_title="Enrichment Score",
-            template=parameters.theme,
             height=600
         )
         
@@ -650,7 +655,6 @@ class VisualizationEngine:
             title="PCA Plot - Pathway Enrichment",
             xaxis_title="Principal Component 1",
             yaxis_title="Principal Component 2",
-            template=parameters.theme,
             height=600
         )
         
@@ -699,7 +703,6 @@ class VisualizationEngine:
             title="UMAP Plot - Pathway Enrichment",
             xaxis_title="UMAP 1",
             yaxis_title="UMAP 2",
-            template=parameters.theme,
             height=600
         )
         
@@ -790,7 +793,6 @@ class VisualizationEngine:
             title="Manhattan Plot - Pathway Enrichment",
             xaxis_title="Pathway Index",
             yaxis_title="-Log10 Adjusted P-value",
-            template=parameters.theme,
             height=600
         )
         
@@ -839,7 +841,6 @@ class VisualizationEngine:
             title="Enrichment Plot",
             xaxis_title="Rank in Ordered Gene List",
             yaxis_title="Running Enrichment Score",
-            template=parameters.theme,
             height=600
         )
         
@@ -889,7 +890,6 @@ class VisualizationEngine:
             title="Pathway Map",
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            template=parameters.theme,
             height=600
         )
         
@@ -935,7 +935,6 @@ class VisualizationEngine:
             title="Gene Expression Plot",
             xaxis_title="Gene",
             yaxis_title="Expression Level",
-            template=parameters.theme,
             height=600
         )
         
@@ -982,7 +981,6 @@ class VisualizationEngine:
             title="Time Series Plot",
             xaxis_title="Time (hours)",
             yaxis_title="Expression Level",
-            template=parameters.theme,
             height=600
         )
         
@@ -1012,7 +1010,6 @@ class VisualizationEngine:
                 title="Dataset Comparison",
                 xaxis_title="Dataset",
                 yaxis_title="Comparison Score",
-                template=parameters.theme,
                 height=600
             )
             
@@ -1061,7 +1058,6 @@ class VisualizationEngine:
             title="Consensus Plot",
             xaxis_title="Enrichment Score",
             yaxis_title="Adjusted P-value",
-            template=parameters.theme,
             height=600
         )
         

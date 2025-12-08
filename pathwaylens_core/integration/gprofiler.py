@@ -59,8 +59,6 @@ class GProfilerClient:
             "organism": species,
             "query": gene_list,
             "sources": sources,
-            "threshold_algorithm": "analytical",
-            "domain_scope": "annotated",
             "user_threshold": significance_threshold,
             **kwargs
         }

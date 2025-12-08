@@ -115,7 +115,8 @@ class IDConverter:
         output_type: IDType,
         species: SpeciesType,
         ambiguity_policy: AmbiguityPolicy = AmbiguityPolicy.EXPAND,
-        track_statistics: bool = True
+        track_statistics: bool = True,
+        services: Optional[List[str]] = None
     ) -> List[ConversionResult]:
         """
         Convert identifiers from input type to output type.
@@ -168,45 +169,52 @@ class IDConverter:
         # Process in batches for large lists
         if len(identifiers) > self.batch_size:
             return await self._convert_in_batches(
-                identifiers, input_type, output_type, species, ambiguity_policy, track_statistics
+                identifiers, input_type, output_type, species, ambiguity_policy, track_statistics, services
             )
         
         # Try different conversion methods
         results = []
         errors: Dict[str, int] = {}
         
+        # Default services if not specified
+        if not services:
+            services = ["mygene", "ensembl", "ncbi"]
+            
         # Method 1: MyGene.info
-        try:
-            mygene_results = await self._convert_via_mygene(
-                identifiers, input_type, output_type, species
-            )
-            results.extend(mygene_results)
-        except Exception as e:
-            error_msg = str(e)
-            errors[error_msg] = errors.get(error_msg, 0) + 1
-            self.logger.warning(f"MyGene conversion failed: {e}. This may affect conversion accuracy.")
+        if "mygene" in services:
+            try:
+                mygene_results = await self._convert_via_mygene(
+                    identifiers, input_type, output_type, species
+                )
+                results.extend(mygene_results)
+            except Exception as e:
+                error_msg = str(e)
+                errors[error_msg] = errors.get(error_msg, 0) + 1
+                self.logger.warning(f"MyGene conversion failed: {e}. This may affect conversion accuracy.")
         
         # Method 2: Ensembl
-        try:
-            ensembl_results = await self._convert_via_ensembl(
-                identifiers, input_type, output_type, species
-            )
-            results.extend(ensembl_results)
-        except Exception as e:
-            error_msg = str(e)
-            errors[error_msg] = errors.get(error_msg, 0) + 1
-            self.logger.warning(f"Ensembl conversion failed: {e}. This may affect conversion accuracy.")
+        if "ensembl" in services:
+            try:
+                ensembl_results = await self._convert_via_ensembl(
+                    identifiers, input_type, output_type, species
+                )
+                results.extend(ensembl_results)
+            except Exception as e:
+                error_msg = str(e)
+                errors[error_msg] = errors.get(error_msg, 0) + 1
+                self.logger.warning(f"Ensembl conversion failed: {e}. This may affect conversion accuracy.")
         
         # Method 3: NCBI
-        try:
-            ncbi_results = await self._convert_via_ncbi(
-                identifiers, input_type, output_type, species
-            )
-            results.extend(ncbi_results)
-        except Exception as e:
-            error_msg = str(e)
-            errors[error_msg] = errors.get(error_msg, 0) + 1
-            self.logger.warning(f"NCBI conversion failed: {e}. This may affect conversion accuracy.")
+        if "ncbi" in services:
+            try:
+                ncbi_results = await self._convert_via_ncbi(
+                    identifiers, input_type, output_type, species
+                )
+                results.extend(ncbi_results)
+            except Exception as e:
+                error_msg = str(e)
+                errors[error_msg] = errors.get(error_msg, 0) + 1
+                self.logger.warning(f"NCBI conversion failed: {e}. This may affect conversion accuracy.")
         
         # Merge and deduplicate results
         merged_results = self._merge_conversion_results(results, ambiguity_policy)
@@ -225,7 +233,8 @@ class IDConverter:
         output_type: IDType,
         species: SpeciesType,
         ambiguity_policy: AmbiguityPolicy,
-        track_statistics: bool
+        track_statistics: bool,
+        services: Optional[List[str]] = None
     ) -> List[ConversionResult]:
         """Convert identifiers in batches for efficient processing."""
         self.logger.info(f"Processing {len(identifiers)} identifiers in batches of {self.batch_size}")
@@ -241,7 +250,7 @@ class IDConverter:
             
             try:
                 batch_results = await self.convert_identifiers(
-                    batch, input_type, output_type, species, ambiguity_policy, track_statistics=False
+                    batch, input_type, output_type, species, ambiguity_policy, track_statistics=False, services=services
                 )
                 all_results.extend(batch_results)
             except Exception as e:

@@ -36,11 +36,11 @@ class VisualizationParameters(BaseModel):
     # Basic parameters
     plot_types: List[PlotType] = Field(..., description="Types of plots to generate")
     interactive: bool = Field(default=True, description="Generate interactive plots")
-    output_format: str = Field(default="html", description="Output format (html, png, svg, pdf)")
+    output_formats: List[str] = Field(default=["html"], description="Output formats (html, png, svg, pdf)")
     
     # Styling parameters
-    theme: str = Field(default="light", description="Plot theme (light, dark, high_contrast)")
-    color_scheme: str = Field(default="default", description="Color scheme")
+    theme: str = Field(default="professional", description="Plot theme (light, dark, professional, scientific)")
+    color_scheme: str = Field(default="professional", description="Color scheme")
     figure_size: List[int] = Field(default=[800, 600], description="Figure size [width, height]")
     dpi: int = Field(default=300, description="DPI for static plots")
     
@@ -111,7 +111,7 @@ class PlotMetadata(BaseModel):
     
     # Technical information
     interactive: bool = Field(..., description="Whether plot is interactive")
-    output_format: str = Field(..., description="Output format")
+    output_formats: List[str] = Field(..., description="Output formats")
     file_size: int = Field(..., description="File size in bytes")
     
     # Timestamps

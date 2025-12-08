@@ -79,7 +79,7 @@ all = [
 
 # CLI Entry Points - This creates the standalone 'pathwaylens' command
 [project.scripts]
-pathwaylens = "pathwaylens_cli.main:main"
+pathwaylens = "pathwaylens_cli.main:cli_entry"
 
 # GUI entry point removed - CLI-only tool
 

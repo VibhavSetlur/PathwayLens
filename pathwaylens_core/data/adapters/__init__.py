@@ -14,6 +14,7 @@ from .pathway_commons_adapter import PathwayCommonsAdapter
 from .msigdb_adapter import MSigDBAdapter
 from .panther_adapter import PantherAdapter
 from .wikipathways_adapter import WikiPathwaysAdapter
+from .custom_adapter import CustomAdapter
 
 __all__ = [
     "BaseAdapter",
@@ -25,4 +26,5 @@ __all__ = [
     "MSigDBAdapter",
     "PantherAdapter",
     "WikiPathwaysAdapter",
+    "CustomAdapter",
 ]

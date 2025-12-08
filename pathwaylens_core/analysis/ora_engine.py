@@ -40,7 +40,9 @@ class ORAEngine:
         significance_threshold: float = 0.05,
         correction_method: CorrectionMethod = CorrectionMethod.FDR_BH,
         min_pathway_size: int = 5,
-        max_pathway_size: int = 500
+        max_pathway_size: int = 500,
+        background_genes: Optional[List[str]] = None,
+        background_size: Optional[int] = None
     ) -> DatabaseResult:
         """
         Perform Over-Representation Analysis.
@@ -52,7 +54,10 @@ class ORAEngine:
             significance_threshold: Significance threshold
             correction_method: Multiple testing correction method
             min_pathway_size: Minimum pathway size
+            min_pathway_size: Minimum pathway size
             max_pathway_size: Maximum pathway size
+            background_genes: Optional list of background genes
+            background_size: Optional total number of background genes
             
         Returns:
             DatabaseResult with ORA analysis results
@@ -60,6 +65,14 @@ class ORAEngine:
         self.logger.info(f"Starting ORA analysis with {database.value} for {species}")
         
         try:
+            # Try using g:Profiler API for enrichment (works for KEGG, Reactome, GO)
+            if database.value in ['kegg', 'reactome', 'go']:
+                return await self._analyze_with_gprofiler(
+                    gene_list, database, species, significance_threshold,
+                    min_pathway_size, max_pathway_size
+                )
+            
+            # Fallback to database manager for other databases
             # Validate input parameters
             if not self._validate_input_parameters(gene_list, database, species):
                 raise ValueError("Invalid input parameters")
@@ -76,24 +89,39 @@ class ORAEngine:
             # Extract pathways for the specific database
             pathways = pathway_data_dict.get(database.value, [])
             
-            # Filter pathways by size
-            pathways = self._filter_pathways_by_size(pathways, min_pathway_size, max_pathway_size)
-            
             if not pathways:
                 self.logger.warning(f"No pathways found for {database.value} in {species}")
                 return self._create_empty_result(database, species)
             
-            # Filter pathways by size (redundant if DB does it, but good for safety)
-            pathway_data = self._filter_pathways_by_size(pathway_data, min_pathway_size, max_pathway_size)
+            # Determine background size
+            if background_size is not None:
+                final_background_size = background_size
+            elif background_genes is not None:
+                final_background_size = len(background_genes)
+            else:
+                # Fallback to total unique genes in the database for this species
+                # This is a better approximation than a hardcoded number
+                all_db_genes = set()
+                for p in pathways:
+                    if hasattr(p, 'gene_ids'):
+                        all_db_genes.update(p.gene_ids)
+                    elif isinstance(p, dict):
+                        all_db_genes.update(p.get('genes', []))
+                
+                final_background_size = len(all_db_genes)
+                if final_background_size == 0:
+                    # Last resort fallback if database is empty or malformed
+                    self.logger.warning("Could not determine background size from database, using default 20000")
+                    final_background_size = 20000
             
             # Perform ORA analysis
             pathway_results = []
             total_genes = len(gene_list)
-            background_size = await self.database_manager.get_background_size(species)
             
-            for pathway_id, pathway_info in pathway_data.items():
-                pathway_genes = pathway_info['genes']
-                pathway_name = pathway_info['name']
+            for pathway in pathways:
+                pathway_genes = pathway.gene_ids if hasattr(pathway, 'gene_ids') else []
+                pathway_name = pathway.name if hasattr(pathway, 'name') else pathway.pathway_id
+                pathway_id = pathway.pathway_id if hasattr(pathway, 'pathway_id') else pathway.get('id', 'unknown')
                 
                 # Calculate overlap
                 overlapping_genes = list(set(gene_list) & set(pathway_genes))
@@ -106,12 +134,12 @@ class ORAEngine:
                 # Calculate p-value using hypergeometric test
                 p_value = self._calculate_hypergeometric_pvalue(
                     overlap_count, total_genes, pathway_count, 
-                    background_size
+                    final_background_size
                 )
                 
                 # Calculate enrichment score
                 enrichment_score = self._calculate_enrichment_score(
-                    overlap_count, total_genes, pathway_count
+                    overlap_count, total_genes, pathway_count, final_background_size
                 )
                 
                 # Calculate research-grade enrichment statistics
@@ -119,7 +147,7 @@ class ORAEngine:
                     overlap_count=overlap_count,
                     pathway_count=pathway_count,
                     input_count=total_genes,
-                    background_size=background_size
+                    background_size=final_background_size
                 )
                 
                 # Calculate statistical power
@@ -128,7 +156,7 @@ class ORAEngine:
                     overlap_observed=overlap_count,
                     pathway_count=pathway_count,
                     input_count=total_genes,
-                    background_size=background_size
+                    background_size=final_background_size
                 )
                 
                 pathway_result = PathwayResult(
@@ -191,18 +219,117 @@ class ORAEngine:
             
             return DatabaseResult(
                 database=database,
-                total_pathways=len(pathway_results),
-                significant_pathways=len(significant_pathways),
                 pathways=pathway_results,
+                total_pathways=len(pathway_results),
+                significant_pathways=len([p for p in pathway_results if p.adjusted_p_value < significance_threshold]),
                 species=species,
-                coverage=coverage,
-                database_version=pathway_info.get('version') if pathway_data else None,
-                last_updated=pathway_info.get('last_updated') if pathway_data else None
+                timestamp=datetime.now().isoformat()
             )
             
         except Exception as e:
             self.logger.error(f"ORA analysis failed: {e}")
             raise
+    
+    async def _analyze_with_gprofiler(
+        self,
+        gene_list: List[str],
+        database: DatabaseType,
+        species: str,
+        significance_threshold: float,
+        min_pathway_size: int,
+        max_pathway_size: int
+    ) -> DatabaseResult:
+        """Perform ORA using g:Profiler API."""
+        from ..integration.gprofiler import GProfilerClient
+        
+        self.logger.info(f"Using g:Profiler API for {database.value} enrichment")
+        
+        # Map species to g:Profiler codes
+        species_map = {
+            'homo_sapiens': 'hsapiens',
+            'mus_musculus': 'mmusculus',
+            'rattus_norvegicus': 'rnorvegicus',
+            'human': 'hsapiens',
+            'mouse': 'mmusculus',
+            'rat': 'rnorvegicus'
+        }
+        
+        gprofiler_species = species_map.get(species.lower(), 'hsapiens')
+        
+        # Map database to g:Profiler sources
+        source_map = {
+            'kegg': ['KEGG'],
+            'reactome': ['REAC'],
+            'go': ['GO:BP', 'GO:MF', 'GO:CC']
+        }
+        
+        sources = source_map.get(database.value, ['KEGG', 'REAC'])
+        
+        try:
+            client = GProfilerClient()
+            results = await client.enrich(
+                gene_list=gene_list,
+                species=gprofiler_species,
+                sources=sources,
+                significance_threshold=significance_threshold
+            )
+            
+            # Convert g:Profiler results to PathwayResult objects
+            pathway_results = []
+            for item in results.get('result', []):
+                # Filter by pathway size
+                term_size = item.get('term_size', 0)
+                if term_size < min_pathway_size or term_size > max_pathway_size:
+                    continue
+                
+                intersection_size = item.get('intersection_size', 0)
+                query_size = item.get('query_size', len(gene_list))
+                
+                pathway_results.append(PathwayResult(
+                    pathway_id=item.get('pathway_id', ''),
+                    pathway_name=item.get('name', ''),
+                    database=database,  # Required field
+                    p_value=item.get('p_value', 1.0),
+                    adjusted_p_value=item.get('p_value', 1.0),  # g:Profiler already applies correction
+                    fold_enrichment=item.get('precision', 0.0) * 100 if item.get('precision') else 1.0,
+                    # Required fields
+                    overlap_count=intersection_size,
+                    pathway_count=term_size,
+                    input_count=query_size,
+                    overlapping_genes=[],  # g:Profiler doesn't return gene lists in basic response
+                    analysis_method='ORA',
+                    # Optional fields
+                    pathway_description=item.get('description', ''),
+                    pathway_url=None
+                ))
+            
+            # Calculate coverage as proportion of input genes found in at least one pathway
+            genes_with_pathways = set()
+            for pathway in pathway_results:
+                # g:Profiler's basic response doesn't include overlapping genes,
+                # so this coverage calculation will be 0 unless a more detailed
+                # g:Profiler call is made or the PathwayResult is populated differently.
+                # For now, it will reflect the current state of `overlapping_genes` (empty).
+                genes_with_pathways.update(pathway.overlapping_genes)
+            coverage = len(genes_with_pathways) / max(len(gene_list), 1) if gene_list else 0.0
+            
+            self.logger.info(f"g:Profiler returned {len(pathway_results)} significant pathways")
+            
+            return DatabaseResult(
+                database=database,
+                pathways=pathway_results,
+                total_pathways=len(pathway_results),
+                significant_pathways=len([p for p in pathway_results if p.adjusted_p_value < significance_threshold]),
+                species=species,
+                timestamp=datetime.now().isoformat(),
+                coverage=min(coverage, 1.0),  # Ensure it's between 0 and 1
+                metadata={'api_source': 'gprofiler'}
+            )
+            
+        except Exception as e:
+            self.logger.error(f"g:Profiler API error: {e}")
+            # Return empty result instead of failing
+            return self._create_empty_result(database, species)
     
     def _validate_input_parameters(
         self,
@@ -298,32 +425,12 @@ class ORAEngine:
         self, 
         overlap_count: int, 
         total_genes: int, 
-        pathway_count: int
+        pathway_count: int,
+        background_size: int
     ) -> float:
         """Calculate enrichment score (fold enrichment)."""
         if total_genes == 0 or pathway_count == 0:
             return 0.0
-        
-        # Assuming background size is roughly 20000 for human if not available, 
-        # but ideally should be passed in. For now using a heuristic or 
-        # relying on the fact that this is a relative measure.
-        # However, to match the previous implementation's logic:
-        # expected_overlap = (total_genes * pathway_count) / background_size
-        # But we don't have background_size here easily without passing it.
-        # Let's fetch it or use a standard value.
-        # The previous implementation had: 
-        # expected_overlap = (total_genes * pathway_count) / self.database_manager.get_background_size("human")
-        # This is problematic if species is not human.
-        # Let's use a safer approach.
-        
-        # We will use a default background size if we can't get it, but really we should pass it.
-        # For now, let's assume 20000 as a fallback if not provided, but better to fix the signature.
-        # Since I can't easily change the signature of this private method without checking all calls,
-        # I'll stick to the previous logic but make it safer.
-        
-        # NOTE: In a real fix, I would pass background_size to this method.
-        # For now, I will use a hardcoded fallback to avoid async calls here.
-        background_size = 20000 
         
         expected_overlap = (total_genes * pathway_count) / background_size
         if expected_overlap == 0:

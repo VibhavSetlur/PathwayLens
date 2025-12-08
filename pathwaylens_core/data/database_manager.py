@@ -12,7 +12,8 @@ from pathlib import Path
 
 from .adapters import (
     KEGGAdapter, ReactomeAdapter, GOAdapter, BioCycAdapter,
-    PathwayCommonsAdapter, MSigDBAdapter, PantherAdapter, WikiPathwaysAdapter
+    PathwayCommonsAdapter, MSigDBAdapter, PantherAdapter, WikiPathwaysAdapter,
+    CustomAdapter
 )
 from .adapters.base import BaseAdapter, PathwayInfo, GeneInfo
 from ..normalization.schemas import SpeciesType, IDType
@@ -46,6 +47,23 @@ class DatabaseManager:
         
         # Database availability status
         self.availability_status: Dict[str, bool] = {}
+    
+    def load_custom_database(self, file_path: str, name: str = "custom"):
+        """
+        Load a custom database from a GMT/GMX file.
+        
+        Args:
+            file_path: Path to the GMT/GMX file
+            name: Name of the custom database (default: "custom")
+        """
+        try:
+            adapter = CustomAdapter(file_path, name)
+            self.adapters[name] = adapter
+            self.availability_status[name] = True
+            self.logger.info(f"Loaded custom database '{name}' from {file_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to load custom database '{name}': {e}")
+            raise
     
     async def initialize(self):
         """Initialize all database connections."""

@@ -23,41 +23,82 @@ class ThemeManager:
         return {
             "default": {
                 "layout": {
-                    "font": {"family": "Arial", "size": 12},
+                    "font": {"family": "Arial, sans-serif", "size": 14, "color": "#333333"},
                     "plot_bgcolor": "white",
                     "paper_bgcolor": "white",
-                    "grid": {"color": "lightgray", "width": 0.5},
-                    "colorway": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+                    "colorway": ["#332288", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#CC6677", "#882255", "#AA4499"],
+                    "xaxis": {
+                        "showgrid": True, 
+                        "gridcolor": "#E5E5E5", 
+                        "linecolor": "#333333", 
+                        "zeroline": False,
+                        "title_font": {"size": 16, "family": "Arial, sans-serif", "weight": "bold"},
+                        "tickfont": {"size": 12, "family": "Arial, sans-serif"}
+                    },
+                    "yaxis": {
+                        "showgrid": True, 
+                        "gridcolor": "#E5E5E5", 
+                        "linecolor": "#333333", 
+                        "zeroline": False,
+                        "title_font": {"size": 16, "family": "Arial, sans-serif", "weight": "bold"},
+                        "tickfont": {"size": 12, "family": "Arial, sans-serif"}
+                    },
+                    "title": {
+                        "font": {"size": 24, "family": "Arial, sans-serif", "weight": "bold"},
+                        "x": 0.5,
+                        "xanchor": "center"
+                    },
+                    "legend": {
+                        "font": {"size": 12, "family": "Arial, sans-serif"},
+                        "title_font": {"size": 14, "family": "Arial, sans-serif", "weight": "bold"}
+                    }
                 },
                 "colorscale": "Viridis"
             },
-            "dark": {
+            "publication": {
                 "layout": {
-                    "font": {"family": "Arial", "size": 12, "color": "white"},
-                    "plot_bgcolor": "#1e1e1e",
-                    "paper_bgcolor": "#1e1e1e",
-                    "grid": {"color": "darkgray", "width": 0.5},
-                    "colorway": ["#00d4ff", "#ff6b6b", "#4ecdc4", "#45b7d1", "#96ceb4", "#feca57", "#ff9ff3", "#54a0ff", "#5f27cd", "#00d2d3"]
-                },
-                "colorscale": "Viridis"
-            },
-            "scientific": {
-                "layout": {
-                    "font": {"family": "Times New Roman", "size": 14},
+                    "font": {"family": "Arial, sans-serif", "size": 14, "color": "black"},
                     "plot_bgcolor": "white",
                     "paper_bgcolor": "white",
-                    "grid": {"color": "lightgray", "width": 0.5},
-                    "colorway": ["#2E86AB", "#A23B72", "#F18F01", "#C73E1D", "#6A994E", "#8E44AD", "#E67E22", "#34495E", "#1ABC9C", "#E74C3C"]
-                },
-                "colorscale": "Viridis"
-            },
-            "colorblind": {
-                "layout": {
-                    "font": {"family": "Arial", "size": 12},
-                    "plot_bgcolor": "white",
-                    "paper_bgcolor": "white",
-                    "grid": {"color": "lightgray", "width": 0.5},
-                    "colorway": ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999", "#FFFFFF"]
+                    "colorway": ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"],
+                    "xaxis": {
+                        "showgrid": False, 
+                        "showline": True, 
+                        "linewidth": 1.5, 
+                        "linecolor": "black", 
+                        "mirror": True,
+                        "ticks": "outside",
+                        "tickwidth": 1.5,
+                        "ticklen": 5,
+                        "title_font": {"size": 16, "family": "Arial, sans-serif", "weight": "bold"},
+                        "tickfont": {"size": 12, "family": "Arial, sans-serif"}
+                    },
+                    "yaxis": {
+                        "showgrid": False, 
+                        "showline": True, 
+                        "linewidth": 1.5, 
+                        "linecolor": "black", 
+                        "mirror": True,
+                        "ticks": "outside",
+                        "tickwidth": 1.5,
+                        "ticklen": 5,
+                        "title_font": {"size": 16, "family": "Arial, sans-serif", "weight": "bold"},
+                        "tickfont": {"size": 12, "family": "Arial, sans-serif"}
+                    },
+                    "title": {
+                        "font": {"size": 20, "family": "Arial, sans-serif", "weight": "bold"},
+                        "x": 0.5,
+                        "xanchor": "center",
+                        "y": 0.95
+                    },
+                    "legend": {
+                        "font": {"size": 12, "family": "Arial, sans-serif"},
+                        "title_font": {"size": 14, "family": "Arial, sans-serif", "weight": "bold"},
+                        "bordercolor": "black",
+                        "borderwidth": 1,
+                        "bgcolor": "rgba(255, 255, 255, 0.9)"
+                    },
+                    "margin": {"t": 80, "b": 80, "l": 80, "r": 80}
                 },
                 "colorscale": "Viridis"
             }

@@ -17,6 +17,8 @@ from .bayesian_engine import BayesianEngine
 from .pathway_interaction_engine import PathwayInteractionEngine, PathwayInteraction, InteractionAnalysisResult
 from .schemas import AnalysisResult, PathwayResult, AnalysisParameters
 
+from .sc_engine import SingleCellEngine, SingleCellResult
+
 __all__ = [
     "AnalysisEngine",
     "ORAEngine",

@@ -12,142 +12,62 @@ See [INSTALL.md](INSTALL.md) for detailed instructions.
 
 ## Quick Start
 
-### Analyze with Automatic Visualizations
+### Basic Usage
 
+**1. Analyze a gene list (ORA):**
 ```bash
-# Over-representation analysis
 pathwaylens analyze ora \
-  --input deseq2_results.csv \
-  --databases kegg reactome go \
-  --species human \
-  --output-dir results/
+    --input genes.txt \
+    --omic-type transcriptomics \
+    --data-type bulk \
+    --databases kegg \
+    --species human \
+    --output-dir results_ora
 ```
 
-All visualizations generated automatically in database-specific subdirectories.
-
-### Compare Multiple Datasets
-
+**2. Analyze ranked genes (GSEA):**
 ```bash
-# Intelligent comparison with type-aware processing
+pathwaylens analyze gsea \
+    --input ranked_genes.rnk \
+    --omic-type transcriptomics \
+    --data-type bulk \
+    --databases kegg \
+    --species human \
+    --output-dir results_gsea
+```
+
+**3. Compare datasets:**
+```bash
 pathwaylens compare \
-  --inputs ctrl.csv treat1.csv treat2.csv \
-  --labels Control Treatment_A Treatment_B \
-  --type rnaseq \
-  --databases kegg \
-  --species human \
-  --output-dir comparison/
+    --inputs list1.txt \
+    --inputs list2.txt \
+    --mode genes \
+    --omic-type transcriptomics \
+    --data-type bulk \
+    --output-dir comparison_results
 ```
 
-Automatically performs: normalization → DE analysis → enrichment → RRHO2/UpSet → visualizations
-
-### Visualize Experimental Data
-
-```bash
-# Create publication-quality figures from raw data
-pathwaylens visualize \
-  --input deseq2_results.csv \
-  --type deseq \
-  --species human \
-  --output-dir figures/
-```
-
-Produces MA plots, volcano plots, PCA, heatmaps automatically.
+For detailed documentation, see [CLI Reference](docs/CLI_REFERENCE.md).
 
 ## Core Commands
 
-- `analyze` - Pathway enrichment (ORA/GSEA) with automatic visualization
-- `compare` - Type-aware multi-dataset comparison (RRHO2, UpSet, concordance)
-- `visualize` - Publication-quality figures from experimental data
-- `normalize` - Gene ID conversion and normalization
-
-## Supported Data Types
-
-| Type | Input | Auto-Processing | Visualizations |
-|------|-------|----------------|----------------|
-| Bulk RNA-seq | DESeq2, edgeR, limma | ID normalization, filtering | MA, volcano, PCA, heatmap |
-| scRNA-seq | Seurat, Scanpy | Pseudo-bulk, clustering | UMAP, feature, violin, dotplot |
-| Raw counts | Count matrices | Normalization, DE, enrichment | PCA, correlation, dispersion |
-| ATAC-seq | Peak genes | Gene extraction | Genomic distribution |
-| Proteomics | MaxQuant, Perseus | Protein ID mapping | Abundance, volcano |
-
-## Output Structure
-
-```
-results/
-├── kegg/
-│   ├── enrichment.tsv
-│   ├── gene_pathway_mapping.tsv
-│   └── figures/
-│       ├── barplot.svg
-│       ├── volcano.svg
-│       ├── network.svg
-│       └── heatmap.svg
-├── reactome/
-│   └── ...
-└── go/
-    └── ...
-```
+- `analyze ora` - Over-Representation Analysis with hypergeometric test
+- `analyze gsea` - Gene Set Enrichment Analysis for ranked lists
+- `compare` - Compare multiple gene lists or pathway results
+- `normalize` - Gene ID conversion across formats
 
 ## Key Features
 
-**Automatic Processing**
-- Intelligent format detection
-- Auto ID normalization
-- Type-aware preprocessing
-
-**Comprehensive Statistics**
-- Odds ratios with 95% CI
-- Effect sizes (Cohen's h)
-- Statistical power
-- P-value diagnostics
-
-**Publication Quality**
-- All visualizations auto-generated
-- Colorblind-safe palettes
-- 300+ DPI resolution
-- SVG/PDF formats
-
-**Type-Aware Comparison**
-- RRHO2 for RNA-seq
-- UpSet for gene overlaps
-- Concordance analysis
-- Metadata integration
-
-## Example Workflows
-
-### RNA-seq Analysis
-```bash
-# Full pipeline: normalize → analyze → visualize
-pathwaylens analyze ora \
-  --input raw_counts.csv \
-  --databases kegg reactome \
-  --species human
-```
-
-### Multi-Condition Comparison
-```bash
-# Compare with RRHO2 and UpSet plots
-pathwaylens compare \
-  --inputs cond1.csv cond2.csv cond3.csv \
-  --labels A B C \
-  --type deseq \
-  --databases kegg \
-  --species human
-```
-
-### Seurat Object Visualization
-```bash
-# All scRNA-seq visualizations
-pathwaylens visualize \
-  --input seurat_object.rds \
-  --type seurat \
-  --species human
-```
+- **Intelligent Tool Detection**: Automatically detects DESeq2, edgeR, limma, MaxQuant formats
+- **Multiple Databases**: KEGG, Reactome, GO, WikiPathways, MSigDB support
+- **Research-Grade Statistics**: Odds ratios, effect sizes, confidence intervals
+- **Publication-Quality Plots**: Interactive and static visualizations
+- **Cross-Species Support**: Human, mouse, rat, and more
 
 ## Documentation
 
 - **Installation**: [INSTALL.md](INSTALL.md)
-- **CLI Reference**: [docs/user_guide/CLI_REFERENCE.md](docs/user_guide/CLI_REFERENCE.md)
+- **CLI Reference**: [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md)
 - **Input Formats**: [docs/user_guide/](docs/user_guide/)
 - **Examples**: `examples/`
 

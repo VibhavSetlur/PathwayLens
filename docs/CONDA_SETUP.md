@@ -44,6 +44,7 @@ This will:
 4. **Verify installation:**
    ```bash
    python -c "import pathwaylens_core; print('✓ Installation successful')"
+   pathwaylens --version
    ```
 
 ## Environment Management

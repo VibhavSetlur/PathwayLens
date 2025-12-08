@@ -39,9 +39,10 @@ app = typer.Typer(
 )
 
 # Add subcommands
+# Add subcommands
 app.add_typer(normalize.app, name="normalize", help="Convert gene identifiers across formats")
 app.add_typer(analyze.app, name="analyze", help="Perform pathway analysis")
-app.add_typer(compare.app, name="compare", help="Compare multiple datasets")
+app.command(name="compare", help="Compare multiple datasets")(compare.compare)
 app.add_typer(visualize.app, name="visualize", help="Generate visualizations")
 app.add_typer(config.app, name="config", help="Manage configuration")
 app.add_typer(info.app, name="info", help="Display system information")
@@ -99,7 +100,21 @@ def main(
 
 def cli_entry():
     """Entry point for console script."""
-    app()
+    from pathwaylens_cli.utils.exceptions import CLIException
+    
+    try:
+        app()
+    except CLIException as e:
+        console = Console()
+        console.print(f"[bold red]Error:[/bold red] {e.message}")
+        if e.context:
+            console.print(Panel(str(e.context), title="Context", border_style="red"))
+        sys.exit(1)
+    except Exception as e:
+        console = Console()
+        console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
+        console.print_exception()
+        sys.exit(1)
 
 if __name__ == "__main__":
-    app()
+    cli_entry()

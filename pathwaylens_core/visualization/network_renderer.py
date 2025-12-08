@@ -94,6 +94,108 @@ class NetworkRenderer:
         except Exception as e:
             self.logger.error(f"Failed to create pathway network: {e}")
             return {}
+
+    def create_enrichment_map(
+        self,
+        pathway_results: List[Any],
+        similarity_cutoff: float = 0.375,
+        similarity_metric: str = "jaccard",
+        title: str = "Enrichment Map",
+        output_file: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create an Enrichment Map (network of pathways).
+        
+        Args:
+            pathway_results: List of PathwayResult objects or dictionaries
+            similarity_cutoff: Threshold for edge creation (default 0.375)
+            similarity_metric: Metric for similarity ('jaccard', 'overlap', 'combined')
+            title: Plot title
+            output_file: Output file path
+            
+        Returns:
+            Network data dictionary
+        """
+        try:
+            # Extract pathway data
+            pathways = []
+            for p in pathway_results:
+                # Handle PathwayResult object or dict
+                if hasattr(p, 'pathway_id'):
+                    p_id = p.pathway_id
+                    p_name = p.pathway_name
+                    genes = set(p.overlapping_genes) if hasattr(p, 'overlapping_genes') else set()
+                    p_val = p.adjusted_p_value if hasattr(p, 'adjusted_p_value') else 1.0
+                    size = p.pathway_count if hasattr(p, 'pathway_count') else len(genes)
+                else:
+                    p_id = p.get('pathway_id', '')
+                    p_name = p.get('pathway_name', p_id)
+                    genes = set(p.get('overlapping_genes', []))
+                    p_val = p.get('adjusted_p_value', 1.0)
+                    size = p.get('pathway_count', len(genes))
+                
+                pathways.append({
+                    'pathway_id': p_id,
+                    'pathway_name': p_name,
+                    'genes': genes,
+                    'p_value': p_val,
+                    'gene_count': size,
+                    # Color by significance (simple heuristic for now)
+                    'color': 'red' if p_val < 0.05 else 'blue' 
+                })
+            
+            # Calculate interactions (edges)
+            interactions = []
+            n = len(pathways)
+            
+            for i in range(n):
+                for j in range(i + 1, n):
+                    p1 = pathways[i]
+                    p2 = pathways[j]
+                    
+                    genes1 = p1['genes']
+                    genes2 = p2['genes']
+                    
+                    if not genes1 or not genes2:
+                        continue
+                        
+                    intersection = len(genes1.intersection(genes2))
+                    union = len(genes1.union(genes2))
+                    min_size = min(len(genes1), len(genes2))
+                    
+                    if similarity_metric == "jaccard":
+                        score = intersection / union if union > 0 else 0
+                    elif similarity_metric == "overlap":
+                        score = intersection / min_size if min_size > 0 else 0
+                    elif similarity_metric == "combined":
+                        jaccard = intersection / union if union > 0 else 0
+                        overlap = intersection / min_size if min_size > 0 else 0
+                        score = (jaccard + overlap) / 2
+                    else:
+                        score = 0
+                        
+                    if score >= similarity_cutoff:
+                        interactions.append({
+                            'pathway1': p1['pathway_id'],
+                            'pathway2': p2['pathway_id'],
+                            'weight': score,
+                            'type': 'gene_overlap'
+                        })
+            
+            self.logger.info(f"Generated {len(interactions)} edges for Enrichment Map")
+            
+            # Reuse create_pathway_network
+            return self.create_pathway_network(
+                pathways=pathways,
+                interactions=interactions,
+                title=title,
+                layout="spring", # Force spring layout for enrichment maps usually
+                output_file=output_file
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create Enrichment Map: {e}")
+            return {}
     
     def create_gene_network(
         self,
@@ -238,7 +340,7 @@ class NetworkRenderer:
             fig = go.Figure(data=[edge_trace, node_trace],
                           layout=go.Layout(
                               title=network_data.get("title", "Network"),
-                              titlefont_size=16,
+                              title_font_size=16,
                               showlegend=False,
                               hovermode='closest',
                               margin=dict(b=20,l=5,r=5,t=40),

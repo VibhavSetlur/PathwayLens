@@ -44,6 +44,10 @@ class PlotlyRenderer:
             Plotly figure object
         """
         try:
+            if data.empty:
+                self.logger.warning("Empty data provided for dot plot")
+                return self._create_empty_figure("No data available for Dot Plot")
+
             # Create scatter plot
             fig = px.scatter(
                 data,
@@ -51,7 +55,12 @@ class PlotlyRenderer:
                 y=y_col,
                 size=size_col,
                 color=color_col,
-                hover_data=[x_col, y_col, size_col, color_col],
+                hover_data={
+                    x_col: ":.2f",
+                    y_col: False,
+                    size_col: True,
+                    color_col: ":.2e"
+                },
                 title=title,
                 labels={
                     x_col: "Enrichment Score",
@@ -61,21 +70,69 @@ class PlotlyRenderer:
                 }
             )
             
+            # Add subtitle using annotation
+            subtitle = f"Top {len(data)} pathways sorted by significance"
+            fig.add_annotation(
+                text=subtitle,
+                xref="paper", yref="paper",
+                x=0.5, y=1.05,
+                showarrow=False,
+                font=dict(size=14, color="gray")
+            )
+
             # Update layout
             fig.update_layout(
-                width=800,
-                height=max(400, len(data) * 20),
+                width=1000,
+                height=max(600, len(data) * 25),
                 xaxis_title="Enrichment Score",
                 yaxis_title="Pathway",
-                showlegend=True
+                showlegend=True,
+                margin=dict(t=100)  # Make room for subtitle
             )
             
+            # Add toggles (updatemenus)
+            fig.update_layout(
+                updatemenus=[
+                    dict(
+                        type="buttons",
+                        direction="left",
+                        buttons=list([
+                            dict(
+                                args=[{"marker.colorscale": "Viridis"}],
+                                label="Viridis",
+                                method="restyle"
+                            ),
+                            dict(
+                                args=[{"marker.colorscale": "RdBu"}],
+                                label="Red-Blue",
+                                method="restyle"
+                            ),
+                            dict(
+                                args=[{"marker.colorscale": "Jet"}],
+                                label="Jet",
+                                method="restyle"
+                            )
+                        ]),
+                        pad={"r": 10, "t": 10},
+                        showactive=True,
+                        x=0.0,
+                        xanchor="left",
+                        y=1.15,
+                        yanchor="top"
+                    )
+                ]
+            )
+
             # Update traces
             fig.update_traces(
                 marker=dict(
-                    line=dict(width=0.5, color='white'),
-                    opacity=0.7
-                )
+                    line=dict(width=1, color='DarkSlateGrey'),
+                    opacity=0.8
+                ),
+                hovertemplate="<b>%{y}</b><br>" +
+                              "Enrichment Score: %{x:.2f}<br>" +
+                              "Overlap Count: %{marker.size}<br>" +
+                              "Adj. P-value: %{marker.color:.2e}<extra></extra>"
             )
             
             if output_file:
@@ -86,16 +143,32 @@ class PlotlyRenderer:
             
         except Exception as e:
             self.logger.error(f"Failed to create dot plot: {e}")
-            return go.Figure()
+            return self._create_empty_figure(f"Error creating Dot Plot: {str(e)}")
+
+    def _create_empty_figure(self, message: str) -> go.Figure:
+        """Create an empty figure with a message."""
+        fig = go.Figure()
+        fig.add_annotation(
+            text=message,
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=20)
+        )
+        fig.update_layout(
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+        )
+        return fig
     
     def create_volcano_plot(
         self,
         data: pd.DataFrame,
         title: str = "Volcano Plot",
-        x_col: str = "log2_fold_change",
-        y_col: str = "neg_log10_p_value",
-        gene_col: str = "gene_id",
-        p_value_threshold: float = 0.05,
+        x_col: str = "log2_fold_enrichment",
+        y_col: str = "neg_log10_p",
+        text_col: str = "pathway_name",
+        significance_threshold: float = 0.05,
         fold_change_threshold: float = 1.0,
         output_file: Optional[str] = None
     ) -> go.Figure:
@@ -103,76 +176,92 @@ class PlotlyRenderer:
         Create an interactive volcano plot.
         
         Args:
-            data: DataFrame with gene expression data
+            data: DataFrame with pathway data
             title: Chart title
             x_col: Column for x-axis (log2 fold change)
             y_col: Column for y-axis (-log10 p-value)
-            gene_col: Column for gene IDs
-            p_value_threshold: P-value threshold for significance
-            fold_change_threshold: Fold change threshold for significance
+            text_col: Column for hover text
+            significance_threshold: P-value threshold
+            fold_change_threshold: Fold change threshold
             output_file: Optional output file path
             
         Returns:
             Plotly figure object
         """
         try:
-            # Create volcano plot
+            if data.empty:
+                self.logger.warning("Empty data provided for volcano plot")
+                return self._create_empty_figure("No data available for Volcano Plot")
+
+            # Create scatter plot
             fig = px.scatter(
                 data,
                 x=x_col,
                 y=y_col,
-                hover_data=[gene_col, x_col, y_col],
+                hover_data={
+                    x_col: ":.2f",
+                    y_col: ":.2f",
+                    text_col: True
+                },
                 title=title,
                 labels={
-                    x_col: "Log2 Fold Change",
+                    x_col: "Log2 Fold Enrichment",
                     y_col: "-Log10 P-value",
-                    gene_col: "Gene"
+                    text_col: "Pathway"
                 }
             )
             
-            # Add significance thresholds
+            # Add significance lines
             fig.add_hline(
-                y=-np.log10(p_value_threshold),
-                line_dash="dash",
+                y=-np.log10(significance_threshold), 
+                line_dash="dash", 
                 line_color="red",
-                annotation_text=f"P-value = {p_value_threshold}"
+                annotation_text=f"P = {significance_threshold}"
             )
             
             fig.add_vline(
-                x=fold_change_threshold,
-                line_dash="dash",
-                line_color="red",
-                annotation_text=f"Fold Change = {fold_change_threshold}"
+                x=fold_change_threshold, 
+                line_dash="dash", 
+                line_color="blue",
+                annotation_text=f"FC = {fold_change_threshold}"
             )
             
             fig.add_vline(
-                x=-fold_change_threshold,
-                line_dash="dash",
-                line_color="red"
+                x=-fold_change_threshold, 
+                line_dash="dash", 
+                line_color="blue"
             )
             
-            # Color points based on significance
+            # Add subtitle
+            subtitle = f"Significance threshold: p < {significance_threshold}, |FC| > {fold_change_threshold}"
+            fig.add_annotation(
+                text=subtitle,
+                xref="paper", yref="paper",
+                x=0.5, y=1.05,
+                showarrow=False,
+                font=dict(size=14, color="gray")
+            )
+
+            # Update layout
+            fig.update_layout(
+                width=1000,
+                height=800,
+                xaxis_title="Log2 Fold Enrichment",
+                yaxis_title="-Log10 Adjusted P-value",
+                showlegend=False,
+                margin=dict(t=100)
+            )
+            
+            # Update traces
             fig.update_traces(
                 marker=dict(
-                    color=[
-                        'red' if (abs(row[x_col]) >= fold_change_threshold and 
-                                row[y_col] >= -np.log10(p_value_threshold))
-                        else 'blue'
-                        for _, row in data.iterrows()
-                    ],
-                    size=5,
+                    size=8,
+                    line=dict(width=1, color='DarkSlateGrey'),
                     opacity=0.7
                 )
             )
             
-            # Update layout
-            fig.update_layout(
-                width=800,
-                height=600,
-                xaxis_title="Log2 Fold Change",
-                yaxis_title="-Log10 P-value",
-                showlegend=False
-            )
+
             
             if output_file:
                 fig.write_html(output_file)
@@ -182,40 +271,82 @@ class PlotlyRenderer:
             
         except Exception as e:
             self.logger.error(f"Failed to create volcano plot: {e}")
-            return go.Figure()
-    
+            return self._create_empty_figure(f"Error creating Volcano Plot: {str(e)}")
+
     def create_heatmap(
         self,
         data: pd.DataFrame,
-        title: str = "Expression Heatmap",
+        title: str = "Pathway Heatmap",
+        x_col: str = "database",
+        y_col: str = "pathway_name",
+        value_col: str = "enrichment_score",
         output_file: Optional[str] = None
     ) -> go.Figure:
         """
         Create an interactive heatmap.
         
         Args:
-            data: DataFrame with expression data
+            data: DataFrame with pathway data
             title: Chart title
+            x_col: Column for x-axis
+            y_col: Column for y-axis
+            value_col: Column for heatmap values
             output_file: Optional output file path
             
         Returns:
             Plotly figure object
         """
         try:
+            if data.empty:
+                self.logger.warning("Empty data provided for heatmap")
+                return self._create_empty_figure("No data available for Heatmap")
+
+            # Pivot data for heatmap if needed
+            if not isinstance(data, pd.DataFrame):
+                self.logger.error("Data must be a DataFrame")
+                return self._create_empty_figure("Invalid data format")
+                
+            # Check if data is already pivoted or needs pivoting
+            if not (x_col in data.columns and y_col in data.columns and value_col in data.columns):
+                # Assume data is already in matrix form if columns don't match
+                heatmap_data = data
+            else:
+                heatmap_data = data.pivot_table(
+                    index=y_col, 
+                    columns=x_col, 
+                    values=value_col,
+                    fill_value=0
+                )
+            
             # Create heatmap
-            fig = px.imshow(
-                data,
-                aspect="auto",
-                title=title,
-                labels=dict(x="Sample", y="Gene", color="Expression")
+            fig = go.Figure(data=go.Heatmap(
+                z=heatmap_data.values,
+                x=heatmap_data.columns,
+                y=heatmap_data.index,
+                colorscale='Viridis',
+                hoverongaps=False,
+                hovertemplate='<b>%{y}</b><br>' +
+                              '%{x}: %{z:.2f}<extra></extra>'
+            ))
+            
+            # Add subtitle
+            subtitle = f"Enrichment scores across {len(heatmap_data.columns)} databases"
+            fig.add_annotation(
+                text=subtitle,
+                xref="paper", yref="paper",
+                x=0.5, y=1.05,
+                showarrow=False,
+                font=dict(size=14, color="gray")
             )
             
             # Update layout
             fig.update_layout(
-                width=800,
-                height=600,
-                xaxis_title="Sample",
-                yaxis_title="Gene"
+                title=title,
+                xaxis_title="Database",
+                yaxis_title="Pathway",
+                width=1000,
+                height=max(600, len(heatmap_data) * 25),
+                margin=dict(t=100)
             )
             
             if output_file:
@@ -226,7 +357,7 @@ class PlotlyRenderer:
             
         except Exception as e:
             self.logger.error(f"Failed to create heatmap: {e}")
-            return go.Figure()
+            return self._create_empty_figure(f"Error creating Heatmap: {str(e)}")
     
     def create_network_plot(
         self,
@@ -272,7 +403,7 @@ class PlotlyRenderer:
             node_y = [node.get('y', 0) for node in nodes]
             node_text = [node.get('label', '') for node in nodes]
             node_sizes = [node.get('size', 10) for node in nodes]
-            node_colors = [node.get('color', 'blue') for node in nodes]
+            node_colors = [node.get('color', '#3498db') for node in nodes]
             
             fig.add_trace(go.Scatter(
                 x=node_x, y=node_y,
@@ -385,6 +516,81 @@ class PlotlyRenderer:
         except Exception as e:
             self.logger.error(f"Failed to create PCA plot: {e}")
             return go.Figure()
+    
+    def create_volcano_plot(
+        self,
+        data: pd.DataFrame,
+        x_col: str = "log2FoldChange",
+        y_col: str = "padj",
+        gene_col: str = "gene_name",
+        title: str = "Volcano Plot",
+        output_file: Optional[str] = None,
+        lfc_threshold: float = 1.0,
+        p_threshold: float = 0.05
+    ) -> Optional[str]:
+        """
+        Create a research-grade interactive volcano plot.
+        
+        Args:
+            data: DataFrame containing results
+            x_col: Column for log2 fold change
+            y_col: Column for adjusted p-value
+            gene_col: Column for gene names
+            title: Plot title
+            output_file: Path to save HTML file
+            lfc_threshold: Log2 fold change threshold for significance
+            p_threshold: Adjusted p-value threshold for significance
+            
+        Returns:
+            Path to the generated plot file
+        """
+        try:
+            df = data.copy()
+            
+            # Add significance column
+            df['Significance'] = 'NS'
+            df.loc[(df[x_col] > lfc_threshold) & (df[y_col] < p_threshold), 'Significance'] = 'Up'
+            df.loc[(df[x_col] < -lfc_threshold) & (df[y_col] < p_threshold), 'Significance'] = 'Down'
+            
+            # Calculate -log10 p-value
+            df['-log10(padj)'] = -np.log10(df[y_col].replace(0, np.nextafter(0, 1)))
+            
+            # Create plot
+            fig = px.scatter(
+                df,
+                x=x_col,
+                y='-log10(padj)',
+                color='Significance',
+                hover_data=[gene_col, x_col, y_col],
+                title=title,
+                color_discrete_map={'Up': '#e74c3c', 'Down': '#3498db', 'NS': '#bdc3c7'},
+                template="plotly_white",
+                opacity=0.8
+            )
+            
+            # Add threshold lines
+            fig.add_hline(y=-np.log10(p_threshold), line_dash="dash", line_color="grey", annotation_text=f"p={p_threshold}")
+            fig.add_vline(x=lfc_threshold, line_dash="dash", line_color="grey", annotation_text=f"LFC={lfc_threshold}")
+            fig.add_vline(x=-lfc_threshold, line_dash="dash", line_color="grey", annotation_text=f"LFC={-lfc_threshold}")
+            
+            # Update layout for publication quality
+            fig.update_layout(
+                font=dict(family="Arial", size=12),
+                title_font=dict(size=20),
+                xaxis_title="Log2 Fold Change",
+                yaxis_title="-Log10 Adjusted P-value",
+                legend_title="Regulation",
+                hovermode="closest"
+            )
+            
+            if output_file:
+                fig.write_html(output_file)
+                return output_file
+            return fig.to_html()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create volcano plot: {e}")
+            return None.Figure()
     
     def create_dashboard(
         self,

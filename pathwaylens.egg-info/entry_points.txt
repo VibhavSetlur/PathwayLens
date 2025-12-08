@@ -1,2 +1,2 @@
 [console_scripts]
-pathwaylens = pathwaylens_cli.main:main
+pathwaylens = pathwaylens_cli.main:cli_entry

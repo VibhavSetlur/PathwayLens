@@ -14,6 +14,9 @@ from rich.console import Console
 from ..utils.api_client import APIClient
 from ..utils.config import Config
 from ..utils.exceptions import CLIException
+from pathwaylens_core.normalization.id_converter import IDConverter
+from pathwaylens_core.normalization.schemas import IDType, SpeciesType, AmbiguityPolicy
+
 
 app = typer.Typer(
     name="normalize",
@@ -28,12 +31,13 @@ console = Console()
 def gene_ids(
     input: str = typer.Option(..., "--input", "-i", help="Input gene ID file or list"),
     input_format: str = typer.Option("auto", "--input-format", "-if", help="Input format (auto, entrezgene, ensembl, symbol, uniprot)"),
-    output_format: str = typer.Option("entrezgene", "--output-format", "-of", help="Output format (entrezgene, ensembl, symbol, uniprot)"),
+    output_format: str = typer.Option("entrez", "--output-format", "-of", help="Output format (entrez, ensembl, symbol, uniprot)"),
     species: str = typer.Option("human", "--species", "-s", help="Species for normalization"),
     drop_unmapped: bool = typer.Option(True, "--drop-unmapped", "-d", help="Drop unmapped genes"),
     batch_size: int = typer.Option(1000, "--batch-size", "-b", help="Batch size for processing"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file"),
     format: str = typer.Option("json", "--format", "-f", help="Output format (json, csv, tsv)"),
+    service: str = typer.Option("mygene,ensembl,ncbi", "--service", help="Comma-separated list of services to use"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
 ):
     """Normalize gene IDs."""
@@ -55,18 +59,50 @@ def gene_ids(
         # Prepare input data
         input_data = _prepare_input_data(input)
         
-        # Prepare parameters
-        parameters = {
-            "input_format": input_format,
-            "output_format": output_format,
-            "species": species,
-            "drop_unmapped": drop_unmapped,
-            "batch_size": batch_size,
-            "output_format": format
-        }
+        # Parse services
+        services = [s.strip() for s in service.split(',')]
         
+        # Initialize converter
+        converter = IDConverter()
+        
+        # Map strings to enums
+        try:
+            in_type = IDType(input_format) if input_format != "auto" else IDType.SYMBOL # Default to symbol if auto
+            out_type = IDType(output_format)
+            sp_type = SpeciesType(species)
+        except ValueError as e:
+            raise CLIException(f"Invalid parameter: {e}")
+
         # Start normalization
-        result = asyncio.run(_start_normalization(api_client, "gene-ids", input_data, parameters))
+        # Start normalization
+        async def run_conversion():
+            async with converter:
+                return await converter.convert_identifiers(
+                    identifiers=input_data,
+                    input_type=in_type,
+                    output_type=out_type,
+                    species=sp_type,
+                    services=services
+                )
+        
+        result_list = asyncio.run(run_conversion())
+            
+        # Convert result list to dict format expected by _save_result/_print_result
+        result = {
+            "job_id": "local",
+            "status": "completed",
+            "results": [
+                {
+                    "input_id": r.input_id,
+                    "output_id": r.output_id,
+                    "confidence": r.confidence,
+                    "source": r.source,
+                    "is_ambiguous": r.is_ambiguous,
+                    "alternative_mappings": r.alternative_mappings
+                }
+                for r in result_list
+            ]
+        }
         
         # Handle output
         if output:

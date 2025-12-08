@@ -8,6 +8,27 @@ from enum import Enum
 from datetime import datetime
 
 
+class ComparisonStage(str, Enum):
+    """Stage of comparison analysis."""
+    COUNTS = "counts"  # Raw/normalized count matrices
+    GENE = "gene"  # Gene lists
+    PATHWAY = "pathway"  # Pathway enrichment results or gene lists (flexible)
+
+
+class ComparisonCategory(str, Enum):
+    """Category of comparison to perform."""
+    SAMPLE_TYPE = "sample-type"  # e.g., bulk vs single-cell
+    CONDITION = "condition"  # e.g., treatment vs control
+    CROSS_OMIC = "cross-omic"  # e.g., RNA vs protein
+
+
+class InputType(str, Enum):
+    """Type of input data for comparison."""
+    GENE_LIST = "gene_list"  # Simple gene lists
+    PATHWAY_RESULTS = "pathway_results"  # Previous pathway enrichment results
+    COUNT_MATRIX = "count_matrix"  # Expression/abundance count matrices
+
+
 class ComparisonType(str, Enum):
     """Types of comparisons that can be performed."""
     GENE_OVERLAP = "gene_overlap"
@@ -23,7 +44,13 @@ class ComparisonParameters(BaseModel):
     
     # Basic parameters
     comparison_type: ComparisonType = Field(..., description="Type of comparison to perform")
+    comparison_stage: ComparisonStage = Field(..., description="Stage of comparison (counts/gene/pathway)")
+    comparison_category: ComparisonCategory = Field(..., description="Category of comparison (sample-type/condition/cross-omic)")
     species: str = Field(..., description="Species for comparison")
+    
+    # Input information with labels
+    input_labels: Dict[str, str] = Field(..., description="Map of label to input file path")
+    input_types: Dict[str, InputType] = Field(..., description="Type of each input (auto-detected or specified)")
     
     # Statistical parameters
     significance_threshold: float = Field(default=0.05, description="Significance threshold")
@@ -34,6 +61,9 @@ class ComparisonParameters(BaseModel):
     databases: List[str] = Field(default=["kegg", "reactome"], description="Databases to use")
     min_pathway_size: int = Field(default=5, description="Minimum pathway size")
     max_pathway_size: int = Field(default=500, description="Maximum pathway size")
+    
+    # Pathway-stage specific (for gene list inputs)
+    run_enrichment_first: bool = Field(default=False, description="Run enrichment on gene lists before comparison")
     
     # Clustering parameters
     clustering_method: str = Field(default="hierarchical", description="Clustering method")

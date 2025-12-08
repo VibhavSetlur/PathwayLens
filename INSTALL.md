@@ -20,7 +20,8 @@ source pathwaylens-env/bin/activate  # On Windows: pathwaylens-env\Scripts\activ
 pip install pathwaylens
 
 # Verify installation
-python -c "import pathwaylens_core; print('✓ PathwayLens installed successfully!')"
+pathwaylens --version
+# Output: PathwayLens v1.0.0
 ```
 
 ### Method 2: Install from Source

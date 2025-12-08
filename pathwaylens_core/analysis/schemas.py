@@ -8,6 +8,8 @@ from enum import Enum
 import pandas as pd
 from datetime import datetime
 
+from pathwaylens_core.types import OmicType, DataType
+
 
 class AnalysisType(str, Enum):
     """Supported analysis types."""
@@ -64,11 +66,15 @@ class AnalysisParameters(BaseModel):
     
     # Basic parameters
     analysis_type: AnalysisType = Field(..., description="Type of analysis to perform")
+    omic_type: OmicType = Field(..., description="Omic type (transcriptomics, proteomics, etc.)")
+    data_type: DataType = Field(..., description="Specific data type (bulk, shotgun, etc.)")
     databases: List[DatabaseType] = Field(..., description="Databases to use for analysis")
     species: str = Field(..., description="Species for analysis")
+    tool: str = Field(default="auto", description="Tool used to generate input")
     
     # Statistical parameters
     significance_threshold: float = Field(default=0.05, description="Significance threshold")
+    lfc_threshold: float = Field(default=0.0, description="Log2 fold change threshold")
     correction_method: CorrectionMethod = Field(default=CorrectionMethod.FDR_BH, description="Multiple testing correction")
     min_pathway_size: int = Field(default=5, description="Minimum pathway size")
     max_pathway_size: int = Field(default=500, description="Maximum pathway size")
@@ -94,6 +100,7 @@ class AnalysisParameters(BaseModel):
     # Background parameters
     background_source: str = Field(default="database", description="Source of background genes")
     custom_background: Optional[List[str]] = Field(default=None, description="Custom background gene list")
+    background_size: Optional[int] = Field(default=None, description="Total number of background genes")
     
     # Additional parameters
     include_plots: bool = Field(default=True, description="Include plots in results")

@@ -20,8 +20,9 @@ from pathwaylens_core.analysis.schemas import (
 )
 from pathwaylens_core.comparison.schemas import (
     ComparisonResult, OverlapStatistics, ComparisonType, ComparisonParameters,
-    CorrelationResult, PathwayConcordance
+    CorrelationResult, PathwayConcordance, ComparisonStage, ComparisonCategory, InputType
 )
+from pathwaylens_core.types import OmicType, DataType
 
 
 class TestVisualizationEngine:
@@ -76,6 +77,8 @@ class TestVisualizationEngine:
                 analysis_type=AnalysisType.ORA,
                 databases=[DatabaseType.KEGG],
                 species="human",
+                omic_type=OmicType.TRANSCRIPTOMICS,
+                data_type=DataType.BULK,
                 significance_threshold=0.05,
                 correction_method=CorrectionMethod.FDR_BH,
                 min_pathway_size=5,
@@ -116,7 +119,13 @@ class TestVisualizationEngine:
             comparison_type=ComparisonType.GENE_OVERLAP,
             parameters=ComparisonParameters(
                 comparison_type=ComparisonType.GENE_OVERLAP,
+                comparison_stage=ComparisonStage.GENE,
+                comparison_category=ComparisonCategory.SAMPLE_TYPE,
                 species="human",
+                omic_type=OmicType.TRANSCRIPTOMICS,
+                data_type=DataType.BULK,
+                input_labels={"file1.txt": "Dataset 1", "file2.txt": "Dataset 2"},
+                input_types={"file1.txt": InputType.GENE_LIST, "file2.txt": InputType.GENE_LIST},
                 significance_threshold=0.05,
                 correlation_threshold=0.3,
                 overlap_threshold=0.1
@@ -375,6 +384,8 @@ class TestVisualizationEngine:
                 analysis_type=AnalysisType.ORA,
                 databases=[DatabaseType.KEGG],
                 species="human",
+                omic_type=OmicType.TRANSCRIPTOMICS,
+                data_type=DataType.BULK,
                 significance_threshold=0.05
             ),
             input_file="test.txt",
@@ -416,7 +427,13 @@ class TestVisualizationEngine:
             comparison_type=ComparisonType.GENE_OVERLAP,
             parameters=ComparisonParameters(
                 comparison_type=ComparisonType.GENE_OVERLAP,
-                species="human"
+                comparison_stage=ComparisonStage.GENE,
+                comparison_category=ComparisonCategory.SAMPLE_TYPE,
+                species="human",
+                omic_type=OmicType.TRANSCRIPTOMICS,
+                data_type=DataType.BULK,
+                input_labels={"file1.txt": "Dataset 1", "file2.txt": "Dataset 2"},
+                input_types={"file1.txt": InputType.GENE_LIST, "file2.txt": InputType.GENE_LIST}
             ),
             input_files=["file1.txt", "file2.txt"],
             num_datasets=2,

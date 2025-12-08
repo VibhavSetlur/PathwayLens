@@ -11,8 +11,10 @@ from pathlib import Path
 from pathwaylens_core.comparison.engine import ComparisonEngine
 from pathwaylens_core.comparison.schemas import (
     ComparisonResult, ComparisonParameters, ComparisonType,
-    OverlapStatistics, CorrelationResult, ClusteringResult, PathwayConcordance
+    OverlapStatistics, CorrelationResult, ClusteringResult, PathwayConcordance,
+    ComparisonStage, ComparisonCategory, InputType
 )
+from pathwaylens_core.types import OmicType, DataType
 from pathwaylens_core.analysis.schemas import (
     AnalysisResult, DatabaseResult, PathwayResult, DatabaseType,
     AnalysisParameters, AnalysisType, CorrectionMethod, ConsensusMethod
@@ -66,6 +68,8 @@ class TestComparisonEngine:
             analysis_type=AnalysisType.ORA,
             databases=[DatabaseType.KEGG],
             species="human",
+            omic_type=OmicType.TRANSCRIPTOMICS,
+            data_type=DataType.BULK,
             significance_threshold=0.05,
             correction_method=CorrectionMethod.FDR_BH,
             min_pathway_size=5,
@@ -136,7 +140,13 @@ class TestComparisonEngine:
         return ComparisonParameters(
             comparison_name="Test Comparison",
             comparison_type=ComparisonType.GENE_OVERLAP,
+            comparison_stage=ComparisonStage.GENE,
+            comparison_category=ComparisonCategory.SAMPLE_TYPE,
             species="human",
+            omic_type=OmicType.TRANSCRIPTOMICS,
+            data_type=DataType.BULK,
+            input_labels={"file1.txt": "Dataset 1", "file2.txt": "Dataset 2"},
+            input_types={"file1.txt": InputType.GENE_LIST, "file2.txt": InputType.GENE_LIST},
             significance_threshold=0.05,
             min_pathway_size=5,
             max_pathway_size=500
@@ -188,7 +198,13 @@ class TestComparisonEngine:
             parameters = ComparisonParameters(
                 comparison_name=f"Test {comparison_type.value}",
                 comparison_type=comparison_type,
+                comparison_stage=ComparisonStage.GENE,
+                comparison_category=ComparisonCategory.SAMPLE_TYPE,
                 species="human",
+                omic_type=OmicType.TRANSCRIPTOMICS,
+                data_type=DataType.BULK,
+                input_labels={"file1.txt": "Dataset 1", "file2.txt": "Dataset 2"},
+                input_types={"file1.txt": InputType.GENE_LIST, "file2.txt": InputType.GENE_LIST},
                 significance_threshold=0.05,
                 min_pathway_size=5,
                 max_pathway_size=500
