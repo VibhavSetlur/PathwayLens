@@ -153,6 +153,6 @@ class GOAdapter(BaseAdapter):
             "version": "Latest",
             "url": "http://geneontology.org/",
             "api_url": self.base_url,
-            "supported_species": [s.value for s in self.get_supported_species()],
+            "supported_species": [s.value for s in await self.get_supported_species()],
             "rate_limit": self.rate_limit
         }

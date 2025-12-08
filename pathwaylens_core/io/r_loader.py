@@ -84,16 +84,19 @@ class RLoader:
             
             # Extract expression matrix
             if scipy.sparse.issparse(adata.X):
-                data = adata.X.toarray()
+                logger.info("Detected sparse matrix, creating sparse DataFrame")
+                df = pd.DataFrame.sparse.from_spmatrix(
+                    adata.X,
+                    index=adata.obs_names,
+                    columns=adata.var_names
+                )
             else:
                 data = adata.X
-                
-            # Create DataFrame
-            df = pd.DataFrame(
-                data,
-                index=adata.obs_names,
-                columns=adata.var_names
-            )
+                df = pd.DataFrame(
+                    data,
+                    index=adata.obs_names,
+                    columns=adata.var_names
+                )
             
             return df
             

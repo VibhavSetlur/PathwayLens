@@ -5,8 +5,8 @@ Thank you for your interest in contributing to PathwayLens! We welcome contribut
 ## Governance Model
 
 PathwayLens is a community-driven project.
-- **Maintainer:** [Your Name/Organization]
-- **Core Contributors:** [List of core contributors]
+- **Maintainer:** Vibhav Setlur
+- **Core Contributors:** Vibhav Setlur
 
 We follow a benevolent dictator governance model where the maintainer has final say on design decisions, but we actively seek consensus and community input.
 

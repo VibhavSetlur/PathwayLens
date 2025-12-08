@@ -102,14 +102,35 @@ class SingleCellEngine:
                 
         elif method == "mean_zscore":
             # Z-score normalization per gene, then mean
-            # This highlights relative activity
-            z_matrix = (expression_matrix - expression_matrix.mean(axis=1)[:, np.newaxis]) / expression_matrix.std(axis=1)[:, np.newaxis]
-            z_matrix = z_matrix.fillna(0) # Handle constant genes
+            # To avoid densifying the entire matrix, we calculate stats first
+            # and then apply z-score only on pathway-specific sub-matrices
+            
+            # Calculate gene stats (dense vectors)
+            gene_means = expression_matrix.mean(axis=1)
+            gene_stds = expression_matrix.std(axis=1)
+            
+            # Handle constant genes (std=0) to avoid division by zero
+            gene_stds[gene_stds == 0] = 1.0
             
             for p in valid_pathways:
                 pathway_genes = p['genes']
-                sub_matrix = z_matrix.loc[pathway_genes]
-                scores[p['name']] = sub_matrix.mean(axis=0)
+                
+                # Extract sub-matrix (sparse or dense)
+                sub_matrix = expression_matrix.loc[pathway_genes]
+                
+                # If sparse, densify only this small chunk for calculation
+                if hasattr(sub_matrix, "sparse"):
+                    sub_matrix = sub_matrix.sparse.to_dense()
+                
+                # Get stats for these genes
+                p_means = gene_means.loc[pathway_genes].values[:, np.newaxis]
+                p_stds = gene_stds.loc[pathway_genes].values[:, np.newaxis]
+                
+                # Z-score normalization
+                z_sub_matrix = (sub_matrix - p_means) / p_stds
+                z_sub_matrix = z_sub_matrix.fillna(0)
+                
+                scores[p['name']] = z_sub_matrix.mean(axis=0)
                 
         else:
             raise ValueError(f"Unknown scoring method: {method}")

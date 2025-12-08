@@ -3,12 +3,16 @@ Main analysis engine for PathwayLens.
 """
 
 import asyncio
+import os
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import uuid
+import platform
+import sys
+import importlib.metadata
 from loguru import logger
 
 from .schemas import (
@@ -31,18 +35,19 @@ import json
 class AnalysisEngine:
     """Main analysis engine for pathway enrichment analysis."""
     
-    def __init__(self, database_manager: Optional[DatabaseManager] = None):
+    def __init__(self, database_manager: Optional[DatabaseManager] = None, use_gprofiler: bool = True):
         """
-        Initialize the analysis engine.
+        Initialize analysis engine.
         
         Args:
             database_manager: Database manager instance
+            use_gprofiler: Whether to use g:Profiler for ORA
         """
         self.logger = logger.bind(module="analysis_engine")
         self.database_manager = database_manager or DatabaseManager()
         
         # Initialize analysis engines
-        self.ora_engine = ORAEngine(self.database_manager)
+        self.ora_engine = ORAEngine(self.database_manager, use_gprofiler=use_gprofiler)
         self.gsea_engine = GSEAEngine(self.database_manager)
         self.consensus_engine = ConsensusEngine()
         self.gsva_engine = GSVAEngine(self.database_manager)
@@ -155,7 +160,17 @@ class AnalysisEngine:
                 created_at=start_time.isoformat(),
                 completed_at=end_time.isoformat(),
                 processing_time=processing_time,
-                output_files=output_files
+                output_files=output_files,
+                metadata={
+                    "system": {
+                        "os": platform.system(),
+                        "os_release": platform.release(),
+                        "python_version": sys.version,
+                        "command": " ".join(sys.argv),
+                        "pathwaylens_version": "1.0.0"  # Should be dynamic
+                    },
+                    "environment": dict(os.environ) if False else {} # Don't log full env for privacy
+                }
             )
             
             self.logger.info(f"Analysis job {job_id} completed successfully")

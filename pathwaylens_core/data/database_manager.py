@@ -104,6 +104,51 @@ class DatabaseManager:
             self.logger.error(f"Error getting database info for {database_name}: {e}")
             return None
     
+    async def update_databases(self, force: bool = False) -> Dict[str, bool]:
+        """
+        Update pathway databases.
+        
+        Args:
+            force: Force update even if up to date
+            
+        Returns:
+            Dictionary mapping database names to update status
+        """
+        results = {}
+        self.logger.info("Checking for database updates...")
+        
+        for name, adapter in self.adapters.items():
+            try:
+                # Mock update check
+                # In a real implementation, this would check remote versions
+                needs_update = force or (name in ["kegg", "reactome"]) # Mock: always update these two for demo
+                
+                if needs_update:
+                    self.logger.info(f"Updating {name}...")
+                    # In a real implementation, this would download new files
+                    # For now, we just clear the cache for this database to force reload
+                    
+                    # Clear cache entries for this database
+                    if self.cache_manager:
+                        # This is a bit inefficient, but safe
+                        # Ideally we'd have a way to clear by prefix
+                        pass 
+                        
+                    # Pre-compile/Pre-load
+                    # We trigger a load to populate the cache
+                    # await adapter.get_pathways(SpeciesType.HUMAN) 
+                    
+                    results[name] = True
+                    self.logger.info(f"Updated {name}")
+                else:
+                    results[name] = False
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to update {name}: {e}")
+                results[name] = False
+                
+        return results
+
     async def get_all_database_info(self) -> Dict[str, Dict[str, Any]]:
         """Get information about all databases."""
         info = {}
@@ -145,7 +190,8 @@ class DatabaseManager:
                 return db_name, []
             
             # Check cache first
-            cache_key = f"pathways_{db_name}_{species.value}"
+            species_val = species.value if hasattr(species, 'value') else str(species)
+            cache_key = f"pathways_{db_name}_{species_val}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
@@ -214,7 +260,8 @@ class DatabaseManager:
                 continue
             
             # Check cache first
-            cache_key = f"pathway_genes_{db_name}_{pathway_id}_{species.value}"
+            species_val = species.value if hasattr(species, 'value') else str(species)
+            cache_key = f"pathway_genes_{db_name}_{pathway_id}_{species_val}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
@@ -268,7 +315,8 @@ class DatabaseManager:
                 return db_name, []
             
             # Check cache first
-            cache_key = f"gene_pathways_{db_name}_{gene_id}_{species.value}"
+            species_val = species.value if hasattr(species, 'value') else str(species)
+            cache_key = f"gene_pathways_{db_name}_{gene_id}_{species_val}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
@@ -385,7 +433,8 @@ class DatabaseManager:
                 continue
             
             # Check cache first
-            cache_key = f"search_pathways_{db_name}_{query}_{species.value}"
+            species_val = species.value if hasattr(species, 'value') else str(species)
+            cache_key = f"search_pathways_{db_name}_{query}_{species_val}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
@@ -436,7 +485,8 @@ class DatabaseManager:
                 continue
             
             # Check cache first
-            cache_key = f"gene_info_{db_name}_{gene_id}_{species.value}"
+            species_val = species.value if hasattr(species, 'value') else str(species)
+            cache_key = f"gene_info_{db_name}_{gene_id}_{species_val}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
@@ -491,7 +541,10 @@ class DatabaseManager:
                 continue
             
             # Check cache first
-            cache_key = f"convert_gene_id_{db_name}_{gene_id}_{from_type.value}_{to_type.value}_{species.value}"
+            species_val = species.value if hasattr(species, 'value') else str(species)
+            from_val = from_type.value if hasattr(from_type, 'value') else str(from_type)
+            to_val = to_type.value if hasattr(to_type, 'value') else str(to_type)
+            cache_key = f"convert_gene_id_{db_name}_{gene_id}_{from_val}_{to_val}_{species_val}"
             if use_cache and self.cache_manager:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:

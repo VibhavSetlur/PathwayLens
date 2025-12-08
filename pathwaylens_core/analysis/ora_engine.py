@@ -10,6 +10,7 @@ from loguru import logger
 from datetime import datetime
 import numpy as np
 import scipy.stats as stats
+from statsmodels.stats.multitest import multipletests
 
 from .schemas import (
     AnalysisType, DatabaseType, CorrectionMethod,
@@ -22,15 +23,17 @@ from .statistical_utils import calculate_enrichment_statistics, calculate_statis
 class ORAEngine:
     """Over-Representation Analysis engine."""
     
-    def __init__(self, database_manager: DatabaseManager):
+    def __init__(self, database_manager: DatabaseManager, use_gprofiler: bool = True):
         """
         Initialize the ORA engine.
         
         Args:
             database_manager: Database manager instance
+            use_gprofiler: Whether to use g:Profiler API when available
         """
         self.logger = logger.bind(module="ora_engine")
         self.database_manager = database_manager
+        self.use_gprofiler = use_gprofiler
     
     async def analyze(
         self,
@@ -62,11 +65,13 @@ class ORAEngine:
         Returns:
             DatabaseResult with ORA analysis results
         """
-        self.logger.info(f"Starting ORA analysis with {database.value} for {species}")
+        db_value = database.value if hasattr(database, 'value') else str(database)
+        self.logger.info(f"Starting ORA analysis with {db_value} for {species}")
+        self.logger.warning("Methodological Note: ORA relies on a binary significance cutoff, which may lose information compared to GSEA or topology-based methods.")
         
         try:
             # Try using g:Profiler API for enrichment (works for KEGG, Reactome, GO)
-            if database.value in ['kegg', 'reactome', 'go']:
+            if self.use_gprofiler and db_value in ['kegg', 'reactome', 'go']:
                 return await self._analyze_with_gprofiler(
                     gene_list, database, species, significance_threshold,
                     min_pathway_size, max_pathway_size
@@ -82,15 +87,15 @@ class ORAEngine:
 
             # Get pathway data from database
             pathway_data_dict = await self.database_manager.get_pathways(
-                databases=[database.value],
+                databases=[db_value],
                 species=species
             )
             
             # Extract pathways for the specific database
-            pathways = pathway_data_dict.get(database.value, [])
+            pathways = pathway_data_dict.get(db_value, [])
             
             if not pathways:
-                self.logger.warning(f"No pathways found for {database.value} in {species}")
+                self.logger.warning(f"No pathways found for {db_value} in {species}")
                 return self._create_empty_result(database, species)
             
             # Determine background size
@@ -119,9 +124,18 @@ class ORAEngine:
             total_genes = len(gene_list)
             
             for pathway in pathways:
-                pathway_genes = pathway.gene_ids if hasattr(pathway, 'gene_ids') else []
-                pathway_name = pathway.name if hasattr(pathway, 'name') else pathway.pathway_id
-                pathway_id = pathway.pathway_id if hasattr(pathway, 'pathway_id') else pathway.get('id', 'unknown')
+                # Extract pathway genes
+                if hasattr(pathway, 'gene_ids'):
+                    pathway_genes = pathway.gene_ids
+                elif hasattr(pathway, 'genes'):
+                    pathway_genes = pathway.genes
+                elif isinstance(pathway, dict):
+                    pathway_genes = pathway.get('gene_ids', pathway.get('genes', []))
+                else:
+                    pathway_genes = []
+                
+                pathway_name = getattr(pathway, 'name', None) or (pathway.get('name') if isinstance(pathway, dict) else 'Unknown')
+                pathway_id = getattr(pathway, 'pathway_id', None) or (pathway.get('pathway_id') if isinstance(pathway, dict) else pathway.get('id', 'unknown'))
                 
                 # Calculate overlap
                 overlapping_genes = list(set(gene_list) & set(pathway_genes))
@@ -159,6 +173,20 @@ class ORAEngine:
                     background_size=final_background_size
                 )
                 
+                # Extract metadata
+                if hasattr(pathway, 'url'):
+                    p_url = getattr(pathway, 'url', None)
+                    p_desc = getattr(pathway, 'description', None)
+                    p_cat = getattr(pathway, 'category', None)
+                elif isinstance(pathway, dict):
+                    p_url = pathway.get('url')
+                    p_desc = pathway.get('description')
+                    p_cat = pathway.get('category')
+                else:
+                    p_url = None
+                    p_desc = None
+                    p_cat = None
+
                 pathway_result = PathwayResult(
                     pathway_id=pathway_id,
                     pathway_name=pathway_name,
@@ -180,9 +208,9 @@ class ORAEngine:
                     input_count=total_genes,
                     overlapping_genes=overlapping_genes,
                     pathway_genes=pathway_genes,
-                    pathway_url=pathway_info.get('url'),
-                    pathway_description=pathway_info.get('description'),
-                    pathway_category=pathway_info.get('category'),
+                    pathway_url=p_url,
+                    pathway_description=p_desc,
+                    pathway_category=p_cat,
                     analysis_method="ORA"
                 )
                 
@@ -223,7 +251,8 @@ class ORAEngine:
                 total_pathways=len(pathway_results),
                 significant_pathways=len([p for p in pathway_results if p.adjusted_p_value < significance_threshold]),
                 species=species,
-                timestamp=datetime.now().isoformat()
+                timestamp=datetime.now().isoformat(),
+                coverage=coverage
             )
             
         except Exception as e:

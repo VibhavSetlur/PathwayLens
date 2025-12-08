@@ -8,7 +8,7 @@ from typing import Optional, List
 from pathlib import Path
 from rich.console import Console
 
-from pathwaylens_core.analysis import AnalysisEngine
+from pathwaylens_core.analysis import AnalysisEngine, SingleCellEngine
 from pathwaylens_core.analysis.schemas import AnalysisType, DatabaseType, AnalysisParameters
 from pathwaylens_core.types import OmicType, DataType
 from pathwaylens_core.species import Species
@@ -247,7 +247,62 @@ def gsea(
     except Exception as e:
         console.print(f"[red]Analysis failed: {e}[/red]")
         raise typer.Exit(code=1)
-
+@app.command()
+def single_cell(
+    input: str = typer.Option(..., "--input", "-i", help="Input expression matrix (CSV/TSV/H5AD)"),
+    database: str = typer.Option("kegg", "--database", "-d", help="Database to use"),
+    species: str = typer.Option("human", "--species", "-s", help="Species"),
+    output_dir: Path = typer.Option(..., "--output-dir", "-o", help="Output directory"),
+    min_genes: int = typer.Option(5, "--min-genes", help="Minimum pathway size"),
+    max_genes: int = typer.Option(500, "--max-genes", help="Maximum pathway size"),
+    method: str = typer.Option("mean_zscore", "--method", "-m", help="Scoring method (mean, mean_zscore)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
+):
+    """Perform Single-Cell Pathway Scoring."""
+    input_path = Path(input)
+    if not input_path.exists():
+        console.print(f"[red]Error: Input file '{input}' does not exist[/red]")
+        raise typer.Exit(code=1)
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize engine
+    from pathwaylens_core.data import DatabaseManager
+    db_manager = DatabaseManager()
+    engine = SingleCellEngine(db_manager)
+    
+    try:
+        # Load data (simplified loading for now)
+        import pandas as pd
+        if input_path.suffix == '.h5ad':
+            from pathwaylens_core.io.r_loader import RLoader
+            df = RLoader.load_h5ad(input_path)
+        else:
+            df = pd.read_csv(input_path, index_col=0)
+            
+        if df is None or df.empty:
+             raise ValueError("Failed to load expression data")
+             
+        # Run analysis
+        # We need to run async code in sync command
+        result = asyncio.run(engine.score_single_cells(
+            expression_matrix=df,
+            database=DatabaseType(database),
+            species=species,
+            min_pathway_size=min_genes,
+            max_pathway_size=max_genes,
+            method=method
+        ))
+        
+        # Save results
+        result.pathway_scores.to_csv(output_dir / "pathway_scores.csv")
+        
+        console.print(f"[green]Single-cell analysis completed![/green]")
+        console.print(f"Scores saved to: {output_dir}/pathway_scores.csv")
+        
+    except Exception as e:
+        console.print(f"[red]Analysis failed: {e}[/red]")
+        raise typer.Exit(code=1)
 
 @app.command()
 def batch(

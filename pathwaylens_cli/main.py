@@ -27,22 +27,21 @@ from pathwaylens_cli.commands import (
     info,
     workflow,
     plugin,
+    database, # Added database import
 )
 
 # Initialize the main CLI app
 app = typer.Typer(
     name="pathwaylens",
-    help="🧬 PathwayLens: Next-generation computational biology platform",
-    add_completion=False,
-    rich_markup_mode="rich",
-    no_args_is_help=True,
+    help="PathwayLens: Research-grade pathway analysis tool", # Modified help message
+    rich_markup_mode="rich", # Removed add_completion and no_args_is_help
 )
 
-# Add subcommands
 # Add subcommands
 app.add_typer(normalize.app, name="normalize", help="Convert gene identifiers across formats")
 app.add_typer(analyze.app, name="analyze", help="Perform pathway analysis")
 app.command(name="compare", help="Compare multiple datasets")(compare.compare)
+app.add_typer(database.app, name="database", help="Manage and query pathway databases") # Added database subcommand
 app.add_typer(visualize.app, name="visualize", help="Generate visualizations")
 app.add_typer(config.app, name="config", help="Manage configuration")
 app.add_typer(info.app, name="info", help="Display system information")

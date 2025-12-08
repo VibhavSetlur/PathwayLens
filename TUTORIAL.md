@@ -67,7 +67,22 @@ pathwaylens compare \
   --output-dir results_compare
 ```
 
-### 3.3 Normalization
+### 3.3 Single-Cell Pathway Scoring
+
+Calculate pathway activity scores for single cells (e.g., from scRNA-seq):
+
+```bash
+pathwaylens analyze single-cell \
+  --input matrix.csv \
+  --database kegg \
+  --species human \
+  --method mean_zscore \
+  --output-dir results_sc
+```
+
+**Note:** Input can be a CSV (genes x cells) or `.h5ad` file.
+
+### 3.4 Normalization
 
 Convert gene IDs (e.g., Symbol to Entrez):
 

@@ -85,6 +85,31 @@ class IDConverter:
         
         # Statistics tracking
         self._conversion_stats: Optional[ConversionStatistics] = None
+        
+        # Simple JSON cache
+        self.cache_file = Path.home() / ".pathwaylens" / "id_cache.json"
+        self.cache = self._load_cache()
+        
+    def _load_cache(self) -> Dict[str, Any]:
+        """Load cache from disk."""
+        if self.cache_file.exists():
+            try:
+                import json
+                with open(self.cache_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                self.logger.warning(f"Failed to load cache: {e}")
+        return {}
+        
+    def _save_cache(self):
+        """Save cache to disk."""
+        try:
+            import json
+            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.cache_file, 'w') as f:
+                json.dump(self.cache, f)
+        except Exception as e:
+            self.logger.warning(f"Failed to save cache: {e}")
     
     async def __aenter__(self):
         """Async context manager entry."""
@@ -172,9 +197,29 @@ class IDConverter:
                 identifiers, input_type, output_type, species, ambiguity_policy, track_statistics, services
             )
         
-        # Try different conversion methods
+        # Check cache
+        cached_results = []
+        uncached_identifiers = []
+        
+        for id_val in identifiers:
+            cache_key = f"{id_val}:{input_type.value}:{output_type.value}:{species.value}"
+            if cache_key in self.cache:
+                # Reconstruct result from cache
+                cached_data = self.cache[cache_key]
+                cached_results.append(ConversionResult(**cached_data))
+            else:
+                uncached_identifiers.append(id_val)
+        
+        if not uncached_identifiers:
+            self.logger.info("All identifiers found in cache")
+            return cached_results
+            
+        # Process uncached identifiers
         results = []
         errors: Dict[str, int] = {}
+        
+        # Update identifiers list to only process uncached
+        identifiers = uncached_identifiers
         
         # Default services if not specified
         if not services:
@@ -218,6 +263,23 @@ class IDConverter:
         
         # Merge and deduplicate results
         merged_results = self._merge_conversion_results(results, ambiguity_policy)
+        
+        # Update cache
+        for result in merged_results:
+            cache_key = f"{result.input_id}:{input_type.value}:{output_type.value}:{species.value}"
+            # Store as dict
+            self.cache[cache_key] = {
+                "input_id": result.input_id,
+                "output_id": result.output_id,
+                "confidence": result.confidence,
+                "source": result.source,
+                "is_ambiguous": result.is_ambiguous,
+                "alternative_mappings": result.alternative_mappings
+            }
+        self._save_cache()
+        
+        # Combine with cached results
+        merged_results.extend(cached_results)
         
         # Track statistics
         if track_statistics:
