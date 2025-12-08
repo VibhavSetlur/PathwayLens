@@ -99,7 +99,7 @@ def main(
 
 def cli_entry():
     """Entry point for console script."""
-    from pathwaylens_cli.utils.exceptions import CLIException
+    from pathwaylens_cli.utils.exceptions import CLIException, log_diagnostic_error
     
     try:
         app()
@@ -108,11 +108,23 @@ def cli_entry():
         console.print(f"[bold red]Error:[/bold red] {e.message}")
         if e.context:
             console.print(Panel(str(e.context), title="Context", border_style="red"))
+        
+        # Log diagnostic error
+        log_path = log_diagnostic_error(e, e.context)
+        if log_path:
+            console.print(f"[dim]Diagnostic log written to: {log_path}[/dim]")
+            
         sys.exit(1)
     except Exception as e:
         console = Console()
         console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
         console.print_exception()
+        
+        # Log diagnostic error
+        log_path = log_diagnostic_error(e)
+        if log_path:
+            console.print(f"[dim]Diagnostic log written to: {log_path}[/dim]")
+            
         sys.exit(1)
 
 if __name__ == "__main__":

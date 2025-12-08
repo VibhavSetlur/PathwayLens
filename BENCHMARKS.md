@@ -1,6 +1,23 @@
 # PathwayLens Benchmarks
 
-Performance metrics for standard analysis tasks on typical hardware (8 vCPUs, 32GB RAM).
+Performance metrics for standard analysis tasks.
+
+## Hardware Specifications
+- **CPU**: (User to populate, e.g., Intel Core i9-9900K @ 3.60GHz)
+- **RAM**: (User to populate, e.g., 32GB DDR4)
+- **Storage**: (User to populate, e.g., NVMe SSD)
+- **OS**: Linux (Ubuntu 22.04 LTS)
+
+## Software Versions
+- **Python**: 3.10+
+- **Pandas**: 2.0+
+- **NumPy**: 1.24+
+- **PathwayLens**: 0.1.0
+
+## Input Data
+- **ORA**: Randomly generated gene lists (100 - 10,000 genes).
+- **GSEA**: Ranked gene lists (10,000 - 20,000 genes).
+- **Single-Cell**: Synthetic sparse matrices (5k - 100k cells, 20k genes).
 
 ## 1. ORA Analysis
 
@@ -28,3 +45,9 @@ Using `mean_zscore` method on sparse inputs (`.h5ad`).
 | 100k  | 20k   | Reactome (2k) | ~15m | ~16GB         |
 
 **Note:** Using sparse matrices (`.h5ad`) significantly reduces memory usage compared to dense CSVs.
+
+## Reproducibility
+To reproduce these benchmarks on your system, run:
+```bash
+python3 scripts/benchmarking/run_all.py
+```

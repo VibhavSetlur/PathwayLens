@@ -145,6 +145,10 @@ class ORAEngine:
                 if overlap_count == 0:
                     continue
                 
+                # Filter by pathway size
+                if not (min_pathway_size <= pathway_count <= max_pathway_size):
+                    continue
+                
                 # Calculate p-value using hypergeometric test
                 p_value = self._calculate_hypergeometric_pvalue(
                     overlap_count, total_genes, pathway_count, 

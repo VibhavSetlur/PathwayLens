@@ -1,152 +1,92 @@
-# PathwayLens Tutorial
 
-Welcome to PathwayLens! This tutorial will guide you through the process of analyzing your omics data, from installation to visualization.
+# PathwayLens Tutorial: End-to-End Analysis Pipeline
 
-## 1. Installation
+This tutorial guides you through a complete pathway analysis workflow, from raw gene identifiers to publication-ready visualization.
 
-PathwayLens is a Python package. You can install it via pip:
+## Prerequisites
 
+Ensure PathwayLens is installed:
 ```bash
 pip install pathwaylens
 ```
 
-For R object support (optional), install `rpy2`:
+## 1. Data Preparation (Raw Input)
+
+Start with a list of gene identifiers. For this tutorial, we assume you have a file `genes.txt` containing Ensembl IDs (e.g., from a differential expression analysis).
+
+**Example `genes.txt`:**
+```text
+ENSG00000141510
+ENSG00000130234
+ENSG00000111640
+...
+```
+
+## 2. Normalization (ID Conversion)
+
+Pathway databases (KEGG, Reactome) often require Entrez IDs or specific formats. Use the `normalize` command to convert your identifiers and ensure they are valid.
+
 ```bash
-pip install rpy2
+pathwaylens normalize gene_ids \
+    --input genes.txt \
+    --input-format ensembl \
+    --output-format entrez \
+    --species human \
+    --output normalized_genes.json
 ```
 
-## 2. Preparing Your Data
+**Output:**
+- `normalized_genes.json`: Contains the mapped IDs.
+- `normalization.log`: Detailed log of successful and failed mappings. **Check this log to ensure high coverage.**
 
-PathwayLens accepts various input formats:
-- **CSV/TSV:** A list of genes (one per line) or a table with columns like `gene`, `logFC`, `p_value`.
-- **R Objects:** `.rds` files (requires `rpy2`).
-- **AnnData:** `.h5ad` files (for single-cell data).
+## 3. Pathway Analysis (Filtering & Statistics)
 
-### Example Input (genes.csv)
-```csv
-gene,logFC,p_value
-TP53,2.5,0.001
-BRCA1,-1.8,0.005
-EGFR,1.2,0.04
-```
+Run Over-Representation Analysis (ORA) on the normalized gene list. 
 
-## 3. Running Analysis
-
-### 3.1 Over-Representation Analysis (ORA)
-
-Run ORA on a gene list against KEGG and Reactome:
+**Critical Step:** Apply strict filtering to ensure statistical rigor.
+- `--fdr`: False Discovery Rate threshold (default 0.05).
+- `--min-size`: Minimum pathway size (e.g., 10) to avoid small, spurious pathways.
+- `--max-size`: Maximum pathway size (e.g., 500) to avoid overly broad terms.
 
 ```bash
 pathwaylens analyze ora \
-  --input genes.csv \
-  --omic-type transcriptomics \
-  --data-type bulk \
-  --databases kegg,reactome \
-  --species human \
-  --output-dir results_ora
+    --input normalized_genes.json \
+    --database kegg \
+    --species human \
+    --fdr 0.05 \
+    --min-size 10 \
+    --max-size 500 \
+    --output results/
 ```
 
-**Key Parameters:**
-- `--lfc-threshold`: Filter genes by Log Fold Change (default: 1.0).
-- `--fdr-threshold`: Significance cutoff (default: 0.05).
-- `--background`: Specify background genes (file or size).
+## 4. Interpretation & Visualization
 
-### 3.2 Comparison Analysis
+Navigate to the `results/` directory to explore the findings.
 
-Compare two datasets (e.g., Control vs. Treated):
+### Output Files
+- `analysis_result.json`: Complete results with all statistical metrics.
+- `pathway_summary.csv`: Tabular summary suitable for Excel/Pandas.
 
-```bash
-pathwaylens compare \
-  --inputs control.csv \
-  --inputs treated.csv \
-  --labels "Control" \
-  --labels "Treated" \
-  --comparison-type condition \
-  --stage counts \
-  --method simple \
-  --output-dir results_compare
-```
+### Visualizations
+- `dotplot.png`: Shows top enriched pathways with size and significance.
+- `enrichment_map.html`: Interactive network of related pathways.
 
-### 3.3 Single-Cell Pathway Scoring
+### Interactive Report
+Open `report.html` in your browser to:
+- Filter pathways by p-value.
+- Hover over nodes to see gene overlap.
+- Click pathways to view external database entries.
 
-Calculate pathway activity scores for single cells (e.g., from scRNA-seq):
+## 5. Advanced: Single-Cell Analysis
+
+For scRNA-seq data (`.h5ad`), use the `single-cell` mode.
 
 ```bash
 pathwaylens analyze single-cell \
-  --input matrix.csv \
-  --database kegg \
-  --species human \
-  --method mean_zscore \
-  --output-dir results_sc
+    --input data.h5ad \
+    --database reactome \
+    --method mean_zscore \
+    --output sc_results/
 ```
 
-**Note:** Input can be a CSV (genes x cells) or `.h5ad` file.
-
-### 3.4 Normalization
-
-Convert gene IDs (e.g., Symbol to Entrez):
-
-```bash
-pathwaylens normalize gene-ids \
-  --input genes.txt \
-  --input-format symbol \
-  --output-format entrez \
-  --service mygene \
-  --output normalized.json
-```
-
-## 4. Configuration File
-
-For reproducible runs, define your parameters in a `config.yaml` file:
-
-```yaml
-# config.yaml
-input: genes.csv
-omic_type: transcriptomics
-data_type: bulk
-databases: [kegg, reactome]
-species: human
-lfc_threshold: 1.5
-output_dir: results_config
-```
-
-Run with:
-```bash
-pathwaylens analyze ora --config config.yaml
-```
-
-## 5. Python API
-
-You can also use PathwayLens within Python scripts or Jupyter Notebooks:
-
-```python
-import asyncio
-from pathwaylens_core.api import PathwayLens
-
-async def main():
-    pl = PathwayLens()
-    
-    # Run Analysis
-    result = await pl.analyze(
-        gene_list=["TP53", "BRCA1", "EGFR"],
-        omic_type="transcriptomics",
-        data_type="bulk",
-        databases=["kegg"],
-        species="human"
-    )
-    
-    print(result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-## 6. Interpreting Results
-
-After running `analyze`, check the output directory:
-- **`report.html`**: Interactive dashboard with summary stats and plots.
-- **`results.csv`**: Detailed table of enriched pathways.
-- **`network.html`**: Enrichment Map visualization (if applicable).
-- **`analysis_metadata.json`**: Record of all parameters used.
-
-Happy analyzing!
+**Note:** Ensure your `.h5ad` file contains normalized counts (e.g., after SCTransform or similar). PathwayLens assumes the input matrix is already normalized for technical noise.

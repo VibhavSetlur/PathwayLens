@@ -63,6 +63,10 @@ For detailed documentation, see [CLI Reference](docs/CLI_REFERENCE.md).
 - **Research-Grade Statistics**: Odds ratios, effect sizes, confidence intervals
 - **Publication-Quality Plots**: Interactive and static visualizations
 - **Cross-Species Support**: Human, mouse, rat, and more
+- **Single-Cell Ready**: Native sparse matrix support
+
+> [!IMPORTANT]
+> **Single-Cell Normalization**: PathwayLens assumes input scRNA-seq data (`.h5ad`, `.csv`) is already normalized for sequencing depth (e.g., LogNormalize, SCTransform). It does **not** perform library size normalization internally. Using raw counts will lead to invalid results.
 
 ## Documentation
 

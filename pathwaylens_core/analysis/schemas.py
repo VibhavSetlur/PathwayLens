@@ -76,7 +76,7 @@ class AnalysisParameters(BaseModel):
     significance_threshold: float = Field(default=0.05, description="Significance threshold")
     lfc_threshold: float = Field(default=0.0, description="Log2 fold change threshold")
     correction_method: CorrectionMethod = Field(default=CorrectionMethod.FDR_BH, description="Multiple testing correction")
-    min_pathway_size: int = Field(default=5, description="Minimum pathway size")
+    min_pathway_size: int = Field(default=10, description="Minimum pathway size")
     max_pathway_size: int = Field(default=500, description="Maximum pathway size")
     
     # GSEA-specific parameters

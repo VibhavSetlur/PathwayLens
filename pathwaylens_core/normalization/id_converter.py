@@ -4,8 +4,10 @@ Gene identifier conversion using multiple databases and APIs.
 
 import asyncio
 import aiohttp
-import requests
-from typing import Dict, List, Optional, Set, Tuple, Any
+import json
+import os
+from pathlib import Path
+from typing import List, Dict, Optional, Union, Any
 from dataclasses import dataclass
 from loguru import logger
 import pandas as pd

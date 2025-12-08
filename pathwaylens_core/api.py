@@ -81,7 +81,7 @@ class PathwayLens:
         
         # Run analysis
         result = await self.analysis_engine.analyze(
-            gene_list=gene_list,
+            input_data=gene_list,
             parameters=params,
             output_dir=output_dir
         )
