@@ -1,5 +1,10 @@
 # PathwayLens - Research-Grade Pathway Enrichment Analysis
 
+[![CI](https://github.com/VibhavSetlur/PathwayLens/workflows/CI/badge.svg)](https://github.com/VibhavSetlur/PathwayLens/actions)
+[![codecov](https://codecov.io/gh/VibhavSetlur/PathwayLens/branch/main/graph/badge.svg)](https://codecov.io/gh/VibhavSetlur/PathwayLens)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Professional computational biology tool for pathway enrichment analysis across bulk RNA-seq, single-cell RNA-seq, ATAC-seq, proteomics, and multi-omics datasets.
 
 ## Installation
