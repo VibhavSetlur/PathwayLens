@@ -367,3 +367,195 @@ def create_diagnostic_panel(
         fig.write_image(output_path)
     
     return fig
+
+
+def plot_pi0_estimation(
+    pvalues: List[float],
+    title: str = "π₀ Estimation (Storey's Method)"
+) -> go.Figure:
+    """
+    Create π₀ (proportion of true nulls) estimation plot.
+    
+    Uses Storey's method to estimate the proportion of truly null
+    hypotheses in the dataset.
+    
+    Args:
+        pvalues: List of p-values
+        title: Plot title
+        
+    Returns:
+        Plotly figure
+    """
+    pvalues = np.array(pvalues)
+    pvalues = pvalues[~np.isnan(pvalues)]
+    n = len(pvalues)
+    
+    # Calculate π₀ at different λ thresholds
+    lambdas = np.arange(0.05, 0.95, 0.05)
+    pi0_estimates = []
+    
+    for lam in lambdas:
+        n_above = np.sum(pvalues > lam)
+        pi0 = n_above / (n * (1 - lam))
+        pi0_estimates.append(min(pi0, 1.0))
+    
+    # Final estimate (average of high λ values)
+    pi0_final = np.mean(pi0_estimates[-5:]) if len(pi0_estimates) >= 5 else np.mean(pi0_estimates)
+    
+    fig = go.Figure()
+    
+    # π₀ estimates
+    fig.add_trace(go.Scatter(
+        x=lambdas,
+        y=pi0_estimates,
+        mode='lines+markers',
+        name='π₀(λ)',
+        line=dict(color=ColorPalette.get_colorblind_safe_palette()[2]),
+        marker=dict(size=6)
+    ))
+    
+    # Final estimate line
+    fig.add_hline(
+        y=pi0_final,
+        line_dash="dash",
+        line_color=ColorPalette.get_colorblind_safe_palette()[0],
+        annotation_text=f"Final π₀ = {pi0_final:.3f}",
+        annotation_position="right"
+    )
+    
+    theme = get_plotly_theme("publication")
+    fig.update_layout(
+        title=title,
+        xaxis_title="λ threshold",
+        yaxis_title="π₀ estimate",
+        yaxis_range=[0, 1.1],
+        **theme["layout"]
+    )
+    
+    return fig
+
+
+def generate_diagnostic_report(
+    results: DatabaseResult,
+    output_dir: str,
+    formats: List[str] = None
+) -> Dict[str, str]:
+    """
+    Generate comprehensive diagnostic report with all plots.
+    
+    Saves all diagnostic plots to the specified output directory.
+    
+    Args:
+        results: DatabaseResult to analyze
+        output_dir: Directory to save diagnostic outputs
+        formats: Output formats (default: ["html"])
+        
+    Returns:
+        Dictionary mapping plot names to file paths
+    """
+    from pathlib import Path
+    
+    formats = formats or ["html"]
+    output_path = Path(output_dir) / "diagnostics"
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    pvalues = [p.p_value for p in results.pathways]
+    output_files = {}
+    
+    # Generate all plots
+    plots = {
+        "pvalue_histogram": plot_pvalue_histogram(pvalues),
+        "qq_plot": plot_qq_plot(pvalues),
+        "pathway_size_distribution": plot_pathway_size_distribution(results),
+        "size_vs_significance": plot_size_vs_significance(results),
+        "pi0_estimation": plot_pi0_estimation(pvalues),
+        "diagnostic_panel": create_diagnostic_panel(results)
+    }
+    
+    for name, fig in plots.items():
+        for fmt in formats:
+            if fmt == "html":
+                filepath = output_path / f"{name}.html"
+                fig.write_html(str(filepath))
+            else:
+                filepath = output_path / f"{name}.{fmt}"
+                fig.write_image(str(filepath))
+            
+            output_files[f"{name}_{fmt}"] = str(filepath)
+    
+    # Generate text summary
+    summary = _generate_text_summary(results, pvalues)
+    summary_path = output_path / "diagnostic_summary.txt"
+    with open(summary_path, 'w') as f:
+        f.write(summary)
+    output_files["summary"] = str(summary_path)
+    
+    return output_files
+
+
+def _generate_text_summary(results: DatabaseResult, pvalues: List[float]) -> str:
+    """Generate text summary of diagnostic results."""
+    pvalues = np.array(pvalues)
+    pathway_sizes = [p.pathway_count for p in results.pathways]
+    
+    # Calculate statistics
+    n = len(pvalues)
+    n_sig = sum(1 for p in results.pathways if p.adjusted_p_value < 0.05)
+    median_pval = np.median(pvalues)
+    
+    # KS test for uniformity
+    ks_stat, ks_pval = stats.kstest(pvalues, 'uniform')
+    
+    # Spearman correlation for size bias
+    spearman_r, spearman_p = stats.spearmanr(pathway_sizes, pvalues)
+    
+    # π₀ estimate
+    lambdas = np.arange(0.5, 0.95, 0.05)
+    pi0_estimates = [min(np.sum(pvalues > lam) / (n * (1 - lam)), 1.0) for lam in lambdas]
+    pi0 = np.mean(pi0_estimates)
+    
+    lines = [
+        "=" * 60,
+        "PATHWAY ANALYSIS DIAGNOSTIC REPORT",
+        "=" * 60,
+        "",
+        f"Database: {results.database.value}",
+        f"Total Pathways: {n}",
+        f"Significant Pathways (FDR < 0.05): {n_sig}",
+        "",
+        "P-VALUE DISTRIBUTION",
+        "-" * 40,
+        f"  Median p-value: {median_pval:.4f}",
+        f"  % Significant (p<0.05): {100 * sum(pvalues < 0.05) / n:.1f}%",
+        f"  KS test for uniformity: stat={ks_stat:.3f}, p={ks_pval:.4f}",
+        f"  Estimated π₀ (true nulls): {pi0:.3f}",
+        "",
+        "PATHWAY SIZE BIAS",
+        "-" * 40,
+        f"  Spearman correlation (size vs p): {spearman_r:.3f}",
+        f"  Correlation p-value: {spearman_p:.4f}",
+        f"  Bias detected: {'YES' if spearman_p < 0.05 and spearman_r < -0.2 else 'NO'}",
+        "",
+        "INTERPRETATION",
+        "-" * 40,
+    ]
+    
+    if ks_pval < 0.01:
+        lines.append("  ! P-value distribution deviates significantly from uniform")
+    else:
+        lines.append("  ✓ P-value distribution consistent with null expectations")
+    
+    if spearman_p < 0.05 and spearman_r < -0.2:
+        lines.append("  ! Size bias detected - larger pathways tend to be more significant")
+    else:
+        lines.append("  ✓ No significant pathway size bias")
+    
+    if pi0 < 0.5:
+        lines.append("  ✓ Strong true signal - many enriched pathways")
+    elif pi0 > 0.9:
+        lines.append("  ! Weak signal - few true enrichments detected")
+    
+    lines.extend(["", "=" * 60])
+    
+    return "\n".join(lines)
+

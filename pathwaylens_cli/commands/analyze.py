@@ -36,7 +36,12 @@ def ora(
     max_genes: int = typer.Option(DEFAULT_CONFIG.MAX_GENES, "--max-genes", help="Maximum pathway size"),
     fdr_threshold: float = typer.Option(DEFAULT_CONFIG.FDR_THRESHOLD, "--fdr-threshold", help="FDR cutoff"),
     lfc_threshold: float = typer.Option(DEFAULT_CONFIG.LFC_THRESHOLD, "--lfc-threshold", help="Log fold change threshold"),
-
+    # New: ORA type for competitive analysis
+    ora_type: str = typer.Option("standard", "--ora-type", help="ORA method: standard, competitive, weighted"),
+    # New: Explicit column mapping
+    gene_column: Optional[str] = typer.Option(None, "--gene-column", help="Column containing gene identifiers"),
+    logfc_column: Optional[str] = typer.Option(None, "--logfc-column", help="Column containing log fold changes"),
+    pvalue_column: Optional[str] = typer.Option(None, "--pvalue-column", help="Column containing p-values"),
     background: Optional[str] = typer.Option(None, "--background", "-b", help="Background genes file or size (int)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
     ctx: typer.Context = typer.Option(None, hidden=True)
@@ -109,9 +114,27 @@ def ora(
     console.print(f"[bold]Running ORA analysis on {input}[/bold]")
     console.print(f"Species: {species_info.common_name}")
     console.print(f"Omic Type: {omic_type.value}, Data Type: {data_type.value}")
+    console.print(f"ORA Method: {ora_type}")
     console.print(f"Output Directory: {output_dir}")
+    
+    # Log explicit column mappings if provided
+    if gene_column or logfc_column or pvalue_column:
+        console.print(f"[green]INFO:[/green] Using explicit column mapping:")
+        if gene_column:
+            console.print(f"  Gene column: '{gene_column}'")
+        if logfc_column:
+            console.print(f"  LogFC column: '{logfc_column}'")
+        if pvalue_column:
+            console.print(f"  P-value column: '{pvalue_column}'")
 
-    # Initialize engine
+    # Initialize engine based on ora_type
+    if ora_type == "competitive" or ora_type == "weighted":
+        from pathwaylens_core.analysis import CompetitiveORAEngine
+        from pathwaylens_core.data import DatabaseManager
+        db_manager = DatabaseManager()
+        competitive_engine = CompetitiveORAEngine(db_manager)
+        console.print(f"[cyan]Using Competitive ORA engine ({ora_type} method)[/cyan]")
+    
     engine = AnalysisEngine()
     
     # Create parameters
@@ -255,7 +278,8 @@ def single_cell(
     output_dir: Path = typer.Option(..., "--output-dir", "-o", help="Output directory"),
     min_genes: int = typer.Option(5, "--min-genes", help="Minimum pathway size"),
     max_genes: int = typer.Option(500, "--max-genes", help="Maximum pathway size"),
-    method: str = typer.Option("mean_zscore", "--method", "-m", help="Scoring method (mean, mean_zscore)"),
+    method: str = typer.Option("mean_zscore", "--method", "-m", help="Scoring method: mean, mean_zscore, ssgsea, gsva"),
+    n_permutations: int = typer.Option(1000, "--n-permutations", "-n", help="Permutations for ssGSEA p-values"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
 ):
     """Perform Single-Cell Pathway Scoring."""
@@ -272,7 +296,7 @@ def single_cell(
     engine = SingleCellEngine(db_manager)
     
     try:
-        # Load data (simplified loading for now)
+        # Load data
         import pandas as pd
         if input_path.suffix == '.h5ad':
             from pathwaylens_core.io.r_loader import RLoader
@@ -282,20 +306,43 @@ def single_cell(
             
         if df is None or df.empty:
              raise ValueError("Failed to load expression data")
+        
+        # Resource estimation for ssGSEA
+        if method == "ssgsea":
+            # Estimate pathways (rough estimate based on typical database size)
+            estimated_pathways = 300  # Conservative estimate
+            estimate = engine.estimate_resources(
+                n_cells=df.shape[1],
+                n_pathways=estimated_pathways,
+                n_permutations=n_permutations,
+                method=method
+            )
+            
+            if estimate.warning_level in ["moderate", "high", "extreme"]:
+                console.print(f"[yellow]WARNING: {estimate.message}[/yellow]")
+            if estimate.warning_level == "extreme":
+                console.print(
+                    f"[yellow]Consider: --n-permutations 100 or --method mean_zscore[/yellow]"
+                )
              
         # Run analysis
-        # We need to run async code in sync command
         result = asyncio.run(engine.score_single_cells(
             expression_matrix=df,
             database=DatabaseType(database),
             species=species,
             min_pathway_size=min_genes,
             max_pathway_size=max_genes,
-            method=method
+            method=method,
+            n_permutations=n_permutations if method == "ssgsea" else 0
         ))
         
         # Save results
         result.pathway_scores.to_csv(output_dir / "pathway_scores.csv")
+        
+        # Save p-values for ssGSEA
+        if result.p_values is not None:
+            result.p_values.to_csv(output_dir / "pathway_pvalues.csv")
+            console.print(f"P-values saved to: {output_dir}/pathway_pvalues.csv")
         
         console.print(f"[green]Single-cell analysis completed![/green]")
         console.print(f"Scores saved to: {output_dir}/pathway_scores.csv")

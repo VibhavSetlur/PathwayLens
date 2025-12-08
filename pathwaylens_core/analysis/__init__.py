@@ -7,6 +7,7 @@ GSVA, network-based methods, Bayesian methods, and other enrichment analysis met
 
 from .engine import AnalysisEngine
 from .ora_engine import ORAEngine
+from .competitive_ora_engine import CompetitiveORAEngine
 from .gsea_engine import GSEAEngine
 from .gsva_engine import GSVAEngine
 from .topology_engine import TopologyEngine
@@ -22,6 +23,7 @@ from .sc_engine import SingleCellEngine, SingleCellResult
 __all__ = [
     "AnalysisEngine",
     "ORAEngine",
+    "CompetitiveORAEngine",
     "GSEAEngine", 
     "GSVAEngine",
     "TopologyEngine",
@@ -35,4 +37,7 @@ __all__ = [
     "AnalysisResult",
     "PathwayResult",
     "AnalysisParameters",
+    "SingleCellEngine",
+    "SingleCellResult",
 ]
+
