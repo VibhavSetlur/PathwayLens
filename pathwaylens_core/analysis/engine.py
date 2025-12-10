@@ -802,8 +802,41 @@ class AnalysisEngine:
             combined_file = summary_dir / "combined_results.tsv"
             df_combined.to_csv(combined_file, sep='\t', index=False)
             output_files['combined_results'] = str(combined_file)
+
+        # 3. Generate run metadata (Transparency Update)
+        run_metadata = {
+            "job_id": job_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "success",
+            "parameters": {
+                "analysis_type": parameters.analysis_type.value,
+                "species": parameters.species,
+                "databases": [db.value for db in parameters.databases],
+                "min_pathway_size": parameters.min_pathway_size,
+                "max_pathway_size": parameters.max_pathway_size,
+                # "correction_method": parameters.correction_method.value, # To be added
+                "significance_threshold": parameters.significance_threshold,
+                "custom_background_provided": bool(parameters.custom_background),
+                "background_size": parameters.background_size
+            },
+            "system_info": {
+                "pathwaylens_version": "1.0.0", # specific version fetch to be added
+                "python_version": sys.version,
+                "command_line": " ".join(sys.argv)
+            },
+            "execution_stats": {
+                "input_gene_count": len(gene_stats) if gene_stats else 0, # Approximation
+                "total_pathways_analyzed": sum(r.total_pathways for r in database_results.values()),
+                "significant_pathways_found": sum(r.significant_pathways for r in database_results.values())
+            }
+        }
         
-        # 3. Generate visualizations
+        run_file = output_path / "run.json"
+        with open(run_file, 'w') as f:
+            json.dump(run_metadata, f, indent=2)
+        output_files['run_metadata'] = str(run_file)
+        
+        # 4. Generate visualizations
         if parameters.include_plots:
             visualizer = ComparisonVisualizer(str(summary_dir))
             

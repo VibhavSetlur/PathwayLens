@@ -1,6 +1,7 @@
 # Testing
 tests/data/
 tests/outputs/
+tests/local/
 visualizations/
 
 # Python

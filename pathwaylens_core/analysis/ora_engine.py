@@ -98,14 +98,34 @@ class ORAEngine:
                 self.logger.warning(f"No pathways found for {db_value} in {species}")
                 return self._create_empty_result(database, species)
             
-            # Determine background size
-            if background_size is not None:
-                final_background_size = background_size
-            elif background_genes is not None:
-                final_background_size = len(background_genes)
+            # Determine background universe and size
+            # Rigor Update: Intersection Logic
+            
+            universe_genes = set()
+            
+            if background_genes is not None:
+                # Case 1: Custom background list provided (Best Practice)
+                bg_set = set(background_genes)
+                # Filter input genes to only those in the background (prevent P-value inflation)
+                valid_genes = [g for g in gene_list if g in bg_set]
+                dropped_genes = len(gene_list) - len(valid_genes)
+                
+                if dropped_genes > 0:
+                    self.logger.warning(f"Scientific Rigor: {dropped_genes} input genes were NOT found in the background list and will be excluded. Ensure your background list contains ALL detectable genes from your assay.")
+                    gene_list = valid_genes
+                
+                universe_genes = bg_set
+                final_background_size = len(universe_genes)
+                 
+            elif background_size is not None:
+                 # Case 2: Custom size provided (Legacy/Quick mode)
+                 final_background_size = background_size
+                 self.logger.info(f"Using provided background size: {final_background_size}")
+                 
             else:
-                # Fallback to total unique genes in the database for this species
-                # This is a better approximation than a hardcoded number
+                # Case 3: Genome-wide fallback (Worst Practice - but necessary default)
+                self.logger.warning("CRITICAL: No background gene list provided. Using genome-wide background (all genes in database). This almost certainly inflates False Positive rates. Please provide a background list specific to your assay using '--background'.")
+                
                 all_db_genes = set()
                 for p in pathways:
                     if hasattr(p, 'gene_ids'):
@@ -113,9 +133,10 @@ class ORAEngine:
                     elif isinstance(p, dict):
                         all_db_genes.update(p.get('genes', []))
                 
+                universe_genes = all_db_genes
                 final_background_size = len(all_db_genes)
+                
                 if final_background_size == 0:
-                    # Last resort fallback if database is empty or malformed
                     self.logger.warning("Could not determine background size from database, using default 20000")
                     final_background_size = 20000
             

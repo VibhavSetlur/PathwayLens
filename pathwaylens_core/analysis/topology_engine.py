@@ -98,7 +98,7 @@ class TopologyEngine:
                 
                 # Perform statistical testing
                 pathway_results = await self._perform_statistical_testing(
-                    topology_scores, significance_threshold, correction_method
+                    topology_scores, significance_threshold, correction_method, topology_method
                 )
             
             # Calculate coverage
@@ -294,7 +294,8 @@ class TopologyEngine:
         self,
         topology_scores: Dict[str, float],
         significance_threshold: float,
-        correction_method: str
+        correction_method: str,
+        topology_method: str
     ) -> List[PathwayResult]:
         """Perform statistical testing on topology scores."""
         pathway_results = []

@@ -171,6 +171,30 @@ class Normalizer:
             # Step 8: Save output file
             if output_file:
                 await self._save_output(normalized_table, output_file)
+                
+                # Transparency Update: Save unmapped and ambiguous logs
+                output_path = Path(output_file)
+                base_dir = output_path.parent
+                base_name = output_path.stem
+                
+                # Report unmapped genes
+                unmapped_results = [r for r in conversion_results if r.output_id is None]
+                if unmapped_results:
+                    unmapped_file = base_dir / f"{base_name}_unmapped.csv"
+                    unmapped_data = [{"input_id": r.input_id, "reason": "No mapping found"} for r in unmapped_results]
+                    pd.DataFrame(unmapped_data).to_csv(unmapped_file, index=False)
+                    self.logger.warning(f"Saved {len(unmapped_results)} unmapped identifiers to {unmapped_file}")
+                    
+                # Report ambiguous genes
+                ambiguous_results = [r for r in conversion_results if r.is_ambiguous]
+                if ambiguous_results:
+                    ambiguous_file = base_dir / f"{base_name}_ambiguous.csv"
+                    ambiguous_data = [
+                        {"input_id": r.input_id, "alternatives": ";".join(r.alternative_mappings)} 
+                        for r in ambiguous_results
+                    ]
+                    pd.DataFrame(ambiguous_data).to_csv(ambiguous_file, index=False)
+                    self.logger.warning(f"Saved {len(ambiguous_results)} ambiguous identifiers to {ambiguous_file}")
             
             # Step 9: Calculate statistics
             total_input = len(gene_ids)
@@ -539,3 +563,7 @@ class Normalizer:
         except Exception as e:
             self.logger.error(f"List normalization failed: {e}")
             raise
+
+
+# Alias for backward compatibility
+NormalizationEngine = Normalizer

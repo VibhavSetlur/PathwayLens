@@ -5,6 +5,7 @@ Visualization plugin for PathwayLens.
 from typing import Dict, Any, Optional, List
 from loguru import logger
 import pandas as pd
+import numpy as np
 
 from .base_plugin import BasePlugin
 

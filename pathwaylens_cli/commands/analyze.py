@@ -9,7 +9,7 @@ from pathlib import Path
 from rich.console import Console
 
 from pathwaylens_core.analysis import AnalysisEngine, SingleCellEngine
-from pathwaylens_core.analysis.schemas import AnalysisType, DatabaseType, AnalysisParameters
+from pathwaylens_core.analysis.schemas import AnalysisType, DatabaseType, AnalysisParameters, CorrectionMethod
 from pathwaylens_core.types import OmicType, DataType
 from pathwaylens_core.species import Species
 from pathwaylens_core.config import DEFAULT_CONFIG
@@ -38,6 +38,7 @@ def ora(
     lfc_threshold: float = typer.Option(DEFAULT_CONFIG.LFC_THRESHOLD, "--lfc-threshold", help="Log fold change threshold"),
     # New: ORA type for competitive analysis
     ora_type: str = typer.Option("standard", "--ora-type", help="ORA method: standard, competitive, weighted"),
+    correction_method: str = typer.Option("fdr_bh", "--correction-method", "-c", help="Multiple testing correction: fdr_bh, fdr_by, bonferroni, holm, none"),
     # New: Explicit column mapping
     gene_column: Optional[str] = typer.Option(None, "--gene-column", help="Column containing gene identifiers"),
     logfc_column: Optional[str] = typer.Option(None, "--logfc-column", help="Column containing log fold changes"),
@@ -176,6 +177,7 @@ def ora(
         lfc_threshold=lfc_threshold,
         custom_background=bg_genes,
         background_size=bg_size,
+        correction_method=CorrectionMethod(correction_method),
         tool=tool
     )
 

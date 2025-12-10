@@ -92,9 +92,29 @@ class GSEAEngine:
             # Perform GSEA analysis
             pathway_results = []
             
-            for pathway_id, pathway_info in pathway_data.items():
-                pathway_genes = pathway_info['genes']
-                pathway_name = pathway_info['name']
+            # Perform GSEA analysis
+            pathway_results = []
+            
+            for pathway_info in pathways:
+                if isinstance(pathway_info, dict):
+                    pathway_id = pathway_info.get('id', 'unknown')
+                    pathway_genes = pathway_info.get('genes', [])
+                    pathway_name = pathway_info.get('name', 'Unknown Pathway')
+                    pathway_url = pathway_info.get('url')
+                    pathway_description = pathway_info.get('description')
+                    pathway_category = pathway_info.get('category')
+                    pathway_version = pathway_info.get('version')
+                    pathway_updated = pathway_info.get('last_updated')
+                else:
+                    # Assume object with attributes
+                    pathway_id = getattr(pathway_info, 'pathway_id', 'unknown')
+                    pathway_genes = getattr(pathway_info, 'genes', [])
+                    pathway_name = getattr(pathway_info, 'name', 'Unknown Pathway')
+                    pathway_url = getattr(pathway_info, 'url', None)
+                    pathway_description = getattr(pathway_info, 'description', None)
+                    pathway_category = getattr(pathway_info, 'category', None)
+                    pathway_version = getattr(pathway_info, 'version', None)
+                    pathway_updated = getattr(pathway_info, 'last_updated', None)
                 
                 # Calculate GSEA statistics
                 es_result = self._calculate_enrichment_score(
